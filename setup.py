@@ -216,8 +216,45 @@ def source_build_env_overrides(*, gpu_sm: int, cuda_version: int, build_env: dic
         prepend_env_path(source_env, "LD_LIBRARY_PATH", *library_dirs)
     diagnostics["cuda_toolkit_root"] = str(toolkit_root)
     diagnostics["CUDA_HOME"] = source_env["CUDA_HOME"]
+    diagnostics["CUDA_PATH"] = source_env["CUDA_PATH"]
     diagnostics["CUDACXX"] = source_env["CUDACXX"]
+    diagnostics["source_build_hotfixes"] = [
+        "patch installed cumm/common.py on Linux ARM64 so CUDA include/lib discovery honors CUDA_HOME/CUDA_PATH before /usr/local/cuda"
+    ]
     return source_env, diagnostics
+
+
+def patch_installed_cumm_cuda_discovery(venv: Path) -> None:
+    """Patch cumm's CUDA discovery to honor the selected CUDA toolkit root.
+
+    cumm v0.7.11 can discover `/usr/local/cuda` even when setup.py selected a
+    versioned toolkit such as `/usr/local/cuda-12.8`. On ARM64 that can mix a
+    CUDA 12.8 nvcc with headers from a different toolkit and fail while building
+    spconv with errors such as:
+
+        macro "__cudaLaunch" requires 2 arguments, but only 1 given
+
+    The full TRELLIS extension carries the same hotfix. The text-only extension
+    needs it as well because it still depends on spconv.
+    """
+
+    cumm_common = Path(
+        subprocess.check_output(
+            [str(venv_bin(venv, "python")), "-c", "import cumm.common; print(cumm.common.__file__)"],
+            text=True,
+        ).strip()
+    )
+    original = cumm_common.read_text(encoding="utf-8")
+    if CUMM_CUDA_DISCOVERY_PATCH_MARKER in original:
+        print(f"[setup] cumm CUDA discovery patch already present at {cumm_common}")
+        return
+
+    old = """        else:\n            try:\n                nvcc_path = subprocess.check_output([\"which\", \"nvcc\"\n                                                    ]).decode(\"utf-8\").strip()\n                lib = Path(nvcc_path).parent.parent / \"lib\"\n                include = Path(nvcc_path).parent.parent / \"targets/x86_64-linux/include\"\n                if lib.exists() and include.exists():\n                    if (lib / \"libcudart.so\").exists() and (include / \"cuda.h\").exists():\n                        # should be nvidia conda package\n                        _CACHED_CUDA_INCLUDE_LIB = ([include], lib)\n                        return _CACHED_CUDA_INCLUDE_LIB\n            except:\n                pass \n\n            linux_cuda_root = Path(\"/usr/local/cuda\")\n            include = linux_cuda_root / f\"include\"\n            lib64 = linux_cuda_root / f\"lib64\"\n            assert linux_cuda_root.exists(), f\"can't find cuda in {linux_cuda_root} install via cuda installer or conda first.\"\n"""
+    new = f"""        else:\n            # {CUMM_CUDA_DISCOVERY_PATCH_MARKER}\n            try:\n                nvcc_path = subprocess.check_output([\"which\", \"nvcc\"\n                                                    ]).decode(\"utf-8\").strip()\n                linux_cuda_root = Path(nvcc_path).parent.parent\n                include_candidates = [\n                    linux_cuda_root / \"targets/x86_64-linux/include\",\n                    linux_cuda_root / \"targets/aarch64-linux/include\",\n                    linux_cuda_root / \"targets/sbsa-linux/include\",\n                    linux_cuda_root / \"include\",\n                ]\n                lib_candidates = [\n                    linux_cuda_root / \"lib\",\n                    linux_cuda_root / \"lib64\",\n                    linux_cuda_root / \"targets/x86_64-linux/lib\",\n                    linux_cuda_root / \"targets/aarch64-linux/lib\",\n                    linux_cuda_root / \"targets/sbsa-linux/lib\",\n                ]\n                for include in include_candidates:\n                    for lib in lib_candidates:\n                        if (lib / \"libcudart.so\").exists() and (include / \"cuda.h\").exists():\n                            # should be nvidia conda package or an explicitly selected toolkit root\n                            _CACHED_CUDA_INCLUDE_LIB = ([include], lib)\n                            return _CACHED_CUDA_INCLUDE_LIB\n            except:\n                pass \n\n            linux_cuda_roots = []\n            for env_name in (\"CUDA_HOME\", \"CUDA_PATH\"):\n                env_value = os.getenv(env_name)\n                if env_value:\n                    linux_cuda_roots.append(Path(env_value))\n            linux_cuda_roots.append(Path(\"/usr/local/cuda\"))\n            for linux_cuda_root in linux_cuda_roots:\n                include_candidates = [\n                    linux_cuda_root / \"include\",\n                    linux_cuda_root / \"targets/x86_64-linux/include\",\n                    linux_cuda_root / \"targets/aarch64-linux/include\",\n                    linux_cuda_root / \"targets/sbsa-linux/include\",\n                ]\n                lib_candidates = [\n                    linux_cuda_root / \"lib64\",\n                    linux_cuda_root / \"lib\",\n                    linux_cuda_root / \"targets/x86_64-linux/lib\",\n                    linux_cuda_root / \"targets/aarch64-linux/lib\",\n                    linux_cuda_root / \"targets/sbsa-linux/lib\",\n                ]\n                for include in include_candidates:\n                    for lib64 in lib_candidates:\n                        if (lib64 / \"libcudart.so\").exists() and (include / \"cuda.h\").exists():\n                            _CACHED_CUDA_INCLUDE_LIB = ([include], lib64)\n                            return _CACHED_CUDA_INCLUDE_LIB\n            linux_cuda_root = Path(\"/usr/local/cuda\")\n            include = linux_cuda_root / f\"include\"\n            lib64 = linux_cuda_root / f\"lib64\"\n            assert linux_cuda_root.exists(), f\"can't find cuda in {{linux_cuda_root}} install via cuda installer or conda first.\"\n"""
+    if old not in original:
+        raise RuntimeError(f"Unable to patch cumm CUDA discovery at {cumm_common}; upstream layout changed.")
+    cumm_common.write_text(original.replace(old, new, 1), encoding="utf-8")
+    print(f"[setup] Patched cumm CUDA discovery at {cumm_common} to honor explicit CUDA toolkit roots on Linux ARM64.")
 
 
 def run(cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path | None = None) -> None:
@@ -226,7 +263,11 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path | None =
 
 
 def pip(venv: Path, *args: str, env: dict[str, str] | None = None) -> None:
-    run([str(venv_bin(venv, "pip")), *args], env=env)
+    # Always invoke pip through the venv Python executable. On Windows, running
+    # `venv\\Scripts\\pip.exe install --upgrade pip ...` can fail because pip is
+    # trying to replace the wrapper currently executing. `python -m pip` is the
+    # supported cross-platform form and also works on Linux.
+    run([str(venv_bin(venv, "python")), "-m", "pip", *args], env=env)
 
 
 def pip_install(venv: Path, *packages: str, env: dict[str, str] | None = None, no_build_isolation: bool = False) -> None:
@@ -314,6 +355,7 @@ def install_spconv_from_source(venv: Path, gpu_sm: int, cuda_version: int, build
     with tempfile.TemporaryDirectory(prefix="trellis-text-spconv-") as tmp:
         tmpdir = Path(tmp)
         install_from_repo(venv, tmpdir, "cumm", CUMM_SOURCE_REPO, ref=CUMM_SOURCE_REF, env=source_env, no_deps=True)
+        patch_installed_cumm_cuda_discovery(venv)
         install_from_repo(venv, tmpdir, "spconv", SPCONV_SOURCE_REPO, ref=SPCONV_SOURCE_REF, env=source_env, no_deps=True)
     smoke_check_spconv(venv, env=source_env)
 
@@ -356,7 +398,7 @@ def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
         "torch_packages": torch_pkgs,
         "torch_index": torch_index,
         "cuda_tag": cuda_tag,
-        "spconv_strategy": "source" if is_linux_arm64() else "prebuilt",
+        "spconv_strategy": "source-with-cumm-cuda-discovery-patch" if is_linux_arm64() else "prebuilt",
         "attention_backends": [backend for backend, _ in plan.attention_backends],
         "native_from_git": {
             "nvdiffrast": f"{NVDIFFRAST_SOURCE_REPO}@{NVDIFFRAST_SOURCE_REF}",

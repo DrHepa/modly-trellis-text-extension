@@ -1,120 +1,124 @@
-# modly-trellis-text-extension
+# Modly TRELLIS Text Extension
 
-Text-only TRELLIS extension for Modly.
+Native text-to-3D extension for [Modly](https://github.com/DrHepa) using the official TRELLIS text pipeline.
 
-Author: **DrHepa**
-
-This repository is an additional Modly extension, not a replacement for the full
-TRELLIS.2 extension. It exposes one capability only:
+This repository provides a focused text-only runtime:
 
 ```text
-prompt -> microsoft/TRELLIS-text-xlarge -> textured GLB mesh
+text prompt -> microsoft/TRELLIS-text-xlarge -> textured GLB mesh
 ```
 
-## What this extension contains
+This extension is intentionally separate from the full TRELLIS.2 image/texturing extension. It is designed for users who only need prompt-to-mesh generation and do not want the additional image-to-mesh and mesh-texturing dependency surface.
 
-- One Modly node: `trellis-text/text-to-mesh`
+## Features
+
+- Single Modly node: `text-to-mesh`
 - Generator class: `TrellisTextGenerator`
-- Native official TRELLIS text pipeline: `TrellisTextTo3DPipeline`
+- Official native TRELLIS text pipeline: `TrellisTextTo3DPipeline`
 - GLB export through `trellis.utils.postprocessing_utils.to_glb`
-- Auxiliary weight localization for text pipeline model references
-- A vendoring blueprint for official `trellis/` and official `utils3d`
+- Localized auxiliary model references for TRELLIS text pipeline assets
+- Reduced dependency surface compared with the full TRELLIS.2 extension
 
-## Supported platforms
+## Platform support
 
-CUDA/NVIDIA is required. This is not a CPU or macOS-oriented extension.
+This extension requires an NVIDIA CUDA runtime. CPU-only execution, macOS, and non-NVIDIA GPU backends are not supported.
 
-Supported targets:
+| Platform | Status | Notes |
+| --- | --- | --- |
+| Linux x86_64 + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, prebuilt `spconv-*` when available, and `xformers` with `flash-attn` fallback. |
+| Linux ARM64/aarch64 + NVIDIA CUDA | Supported | Builds `cumm`/`spconv` from source and applies an ARM64 CUDA discovery hotfix before building `spconv`. |
+| Windows + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, `xformers`, and prebuilt `spconv-*` packages. Requires compatible MSVC/CUDA Build Tools for native packages. |
+| macOS | Not supported | The TRELLIS text runtime depends on CUDA and calls `.cuda()`. |
 
-- Linux x86_64 + NVIDIA CUDA
-- Linux ARM64/aarch64 + NVIDIA CUDA
-- Windows + NVIDIA CUDA
+## Models
 
-Unsupported:
-
-- macOS
-- CPU-only runtime
-- Non-NVIDIA GPU runtimes
-
-## Model repositories
-
-Primary model snapshot:
+Primary model repository:
 
 - `microsoft/TRELLIS-text-xlarge`
 
-The native TRELLIS text pipeline also references hidden/auxiliary model assets,
-including:
+Additional model assets used by the native TRELLIS text pipeline include:
 
 - `openai/clip-vit-large-patch14`
 
-At runtime, `generator.py` rewrites pipeline model references into a localized
-config when auxiliary checkpoint files are resolved from Hugging Face. First use
-therefore still depends on valid Hugging Face access and cache/network state.
+On first load, the generator rewrites TRELLIS pipeline references into a localized configuration when auxiliary checkpoint files are resolved from Hugging Face. A working Hugging Face cache or network access is therefore required for the first successful run.
 
-## What was intentionally removed
+## What is intentionally excluded
 
-Compared to the full TRELLIS.2 extension, this text-only repository intentionally
-does **not** include:
+This repository does not include the full TRELLIS.2 image/texturing stack:
 
-- `vendor/trellis2/`
-- TRELLIS.2 image-to-mesh node `generate`
-- TRELLIS.2 texture node `texture-mesh`
-- `o-voxel`
-- `CuMesh`
-- DINOv3/RMBG dependencies and docs
-- optional `nvdiffrec`
-- image/texture diagnostics and multi-capability routing
+- no `vendor/trellis2/`
+- no image-to-mesh `generate` node
+- no `texture-mesh` node
+- no `o-voxel`
+- no `CuMesh`
+- no DINOv3/RMBG image dependencies
+- no optional `nvdiffrec`
+- no multi-capability routing for image/texturing workflows
 
-It still keeps the native dependencies required by official TRELLIS text GLB
-postprocessing:
+The text runtime still requires several CUDA/native packages because official TRELLIS GLB postprocessing uses mesh and Gaussian rendering components:
 
 - `spconv`
-- one attention backend (`flash-attn` or `xformers`, platform-dependent)
+- `xformers` or `flash-attn`, depending on platform
 - `nvdiffrast`
 - `diff_gaussian_rasterization`
 - `xatlas`, `pyvista`, `pymeshfix`, `igraph`
 
-## Setup
+## Installation flow
 
-Modly invokes `setup.py` with extension metadata. For local dry-run planning:
+Modly invokes `setup.py` automatically when the extension is installed. The setup script creates an isolated `venv/` inside the extension directory and installs the CUDA/native runtime dependencies there.
+
+All pip operations are executed as `python -m pip` inside the extension venv. This is intentional: on Windows, directly executing `venv\\Scripts\\pip.exe` while upgrading `pip` can fail because the wrapper is trying to replace itself.
+
+For local install-plan diagnostics only:
 
 ```bash
 python3 setup.py --dry-run-plan 86 124
 ```
 
-Real setup creates `venv/`, installs PyTorch CUDA wheels, Python runtime deps,
-`spconv`, attention backend, `nvdiffrast`, and `diff_gaussian_rasterization`:
+For a direct local setup invocation:
 
 ```bash
 python3 setup.py /path/to/python /path/to/modly-trellis-text-extension 86 124
 ```
 
-Platform notes:
+Arguments:
 
-- Linux ARM64 source-builds `cumm`/`spconv` and uses `flash-attn==2.7.3`.
-- Windows uses `xformers` for attention.
-- Linux x86_64 tries `xformers` first and falls back to `flash-attn==2.7.3`.
+- `python_exe`: Python executable used to create the extension venv.
+- `ext_dir`: extension installation directory.
+- `gpu_sm`: GPU SM value reported by Modly.
+- `cuda_version`: CUDA version reported by Modly, for example `124` or `128`.
+
+### Linux ARM64 note
+
+On Linux ARM64, setup builds `cumm` and `spconv` from source. CUDA toolkit discovery is explicitly steered through `CUDA_HOME`, `CUDA_PATH`, and `CUDACXX`. After `cumm` is installed, setup patches `cumm/common.py` so the subsequent `spconv` build uses the selected CUDA toolkit root instead of accidentally falling back to `/usr/local/cuda`.
+
+This avoids mixed-toolkit failures such as:
+
+```text
+macro "__cudaLaunch" requires 2 arguments, but only 1 given
+```
+
+which can happen when `nvcc` comes from `/usr/local/cuda-12.8` but headers are discovered from a different `/usr/local/cuda` installation.
 
 ## Vendoring
 
-This repository starts with only `vendor/.gitkeep`. Populate vendor sources with:
+The repository starts with a placeholder `vendor/.gitkeep`. Populate pure-Python vendor sources with:
 
 ```bash
 python3 build_vendor.py
 ```
 
-`build_vendor.py` vendors only pure-Python sources:
+`build_vendor.py` vendors only pure-Python runtime sources:
 
-- official Microsoft `TRELLIS` `trellis/` runtime package slices
-- official TRELLIS `utils3d` fork
-- small helper packages if needed
+- official Microsoft TRELLIS `trellis/` runtime slices
+- official TRELLIS-compatible `utils3d` fork
+- small pure-Python helper packages where useful
 
-Native CUDA packages are deliberately installed into the extension venv by
-`setup.py`; they must not be copied into `vendor/`.
+Native CUDA packages must be installed by `setup.py` into the extension venv. They must not be copied into `vendor/`.
 
 ## Static validation
 
-Lightweight checks only:
+Use static validation before publishing changes:
 
 ```bash
 python3 -m py_compile generator.py setup.py build_vendor.py validate_text_only_setup.py
@@ -122,5 +126,8 @@ python3 validate_text_only_setup.py
 git status --short
 ```
 
-Do not run builds, installs, model downloads, or vendor downloads for static
-validation.
+These checks do not install dependencies, build native packages, download models, or populate `vendor/`.
+
+## Repository status
+
+This is a text-only Modly extension. The full TRELLIS.2 extension should remain available separately for image-to-mesh and mesh-texturing workflows.
