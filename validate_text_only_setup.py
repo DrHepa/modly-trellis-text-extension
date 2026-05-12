@@ -62,8 +62,20 @@ def validate_setup_exclusions() -> None:
     require("MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT" in setup, "setup.py must allow explicit CUDA Toolkit override")
     require("ensure_vendor_sources(ext_dir, venv)" in setup, "setup.py must populate vendor/ during extension setup")
     require("build_vendor.py" in setup and "VENDOR_REQUIRED_PATHS" in setup, "setup.py must validate required TRELLIS vendor sources")
+    require(".trellis-text-only" in setup, "setup.py must require the text-only vendor marker so stale vendor trees are rebuilt")
     require("KNOWN_PREBUILT_SPCONV_CUDA_TAGS" in setup, "setup.py must restrict spconv fallback tags to known published wheels")
-    require("resolve_native_build_env(venv" in setup and "pip(venv, \"install\", *torch_pkgs" in setup, "setup.py must run Windows native preflight before long dependency installs")
+    require(
+        setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
+        "setup.py must install wheel-first dependencies before Windows native compiler preflight",
+    )
+
+
+def validate_build_vendor_text_only_patch() -> None:
+    build_vendor = (ROOT / "build_vendor.py").read_text(encoding="utf-8")
+    require("patch_trellis_text_only_exports" in build_vendor, "build_vendor.py must patch TRELLIS pipeline exports for text-only runtime")
+    require("from .trellis_text_to_3d import TrellisTextTo3DPipeline" in build_vendor, "build_vendor.py must export only TrellisTextTo3DPipeline")
+    require("rembg" in build_vendor, "build_vendor.py must document why image pipeline imports are excluded")
+    require("TEXT_ONLY_VENDOR_MARKER" in build_vendor, "build_vendor.py must stamp text-only vendor trees")
 
 
 def validate_vendor_placeholder() -> None:
@@ -79,12 +91,14 @@ def validate_readme() -> None:
     require("vcvars64.bat" in readme, "README must mention automatic MSVC environment loading")
     require("build_vendor.py" in readme and "trellis.pipelines.TrellisTextTo3DPipeline" in readme, "README must document automatic vendor population")
     require("CUDA Toolkit 12.8" in readme and "spconv-cu128" in readme, "README must document Windows CUDA Toolkit and spconv-cu128 caveat")
+    require("rembg" in readme and "TrellisTextTo3DPipeline" in readme, "README must document text-only TRELLIS pipeline export patching")
 
 
 def main() -> None:
     validate_manifest()
     validate_no_removed_runtime_code()
     validate_setup_exclusions()
+    validate_build_vendor_text_only_patch()
     validate_vendor_placeholder()
     validate_readme()
     print("Static text-only validation passed.")

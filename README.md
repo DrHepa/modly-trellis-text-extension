@@ -71,6 +71,8 @@ All pip operations are executed as `python -m pip` inside the extension venv. Th
 
 During setup, `build_vendor.py` is also executed automatically if `vendor/` does not already contain the official TRELLIS text runtime sources. This is required for runtime imports such as `trellis.pipelines.TrellisTextTo3DPipeline`. If vendor population fails, check network access to GitHub and PyPI, then rerun extension setup.
 
+The vendoring step patches TRELLIS pipeline exports for this text-only extension. Official TRELLIS exposes image and text pipelines from the same package; importing the image pipeline pulls image-only dependencies such as `rembg`. This extension rewrites `trellis/pipelines/__init__.py` so only `TrellisTextTo3DPipeline` is exported.
+
 For local install-plan diagnostics only:
 
 ```bash
@@ -115,7 +117,7 @@ If Windows setup fails while compiling a native extension, verify that **Visual 
 
 For current PyTorch `cu128` installs, this usually means installing the **CUDA Toolkit 12.8** from NVIDIA, not just the GPU driver. If CUDA is installed in a non-standard location, set `MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT` to the Toolkit root before installing the extension.
 
-The setup uses only known upstream `spconv` prebuilt CUDA wheel tags (`cu120`, `cu118`) instead of trying every PyTorch CUDA tag. This avoids misleading `spconv-cu128` errors on Windows while still allowing the prebuilt fallback path that upstream currently publishes.
+Windows setup is wheel-first for dependencies that upstream publishes as wheels. It installs PyTorch, runtime Python dependencies, `spconv` prebuilt wheels, and `xformers` before preparing the native compiler environment for source-built TRELLIS postprocessing extensions. The setup uses only known upstream `spconv` prebuilt CUDA wheel tags (`cu120`, `cu118`) instead of trying every PyTorch CUDA tag. This avoids misleading `spconv-cu128` errors on Windows while still allowing the prebuilt fallback path that upstream currently publishes.
 
 ## Vendoring
 

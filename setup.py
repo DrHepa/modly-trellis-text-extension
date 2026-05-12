@@ -30,7 +30,9 @@ MIP_SPLATTING_SOURCE_REF = "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9"
 MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY = "submodules/diff-gaussian-rasterization"
 VENDOR_REQUIRED_PATHS = (
     Path("vendor") / "trellis" / "__init__.py",
+    Path("vendor") / "trellis" / "pipelines" / "trellis_text_to_3d.py",
     Path("vendor") / "utils3d",
+    Path("vendor") / ".trellis-text-only",
 )
 
 PYTHON_RUNTIME_DEPENDENCIES = (
@@ -622,18 +624,18 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     pip(venv, "install", "--upgrade", "pip", "setuptools", "wheel")
     ensure_vendor_sources(ext_dir, venv)
 
-    native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
-    if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
-        print(f"[setup] Steering native source builds to CUDA toolkit root: {native_diagnostics['cuda_toolkit_root']}")
-    if native_diagnostics and native_diagnostics.get("msvc"):
-        print(f"[setup] Windows MSVC native build env: {json.dumps(native_diagnostics['msvc'], indent=2)}")
-
     torch_pkgs, torch_index, cuda_tag = select_torch(gpu_sm, cuda_version)
     pip(venv, "install", *torch_pkgs, "--index-url", torch_index)
     install_python_runtime_dependencies(venv)
     install_spconv(venv, cuda_tag, gpu_sm, build_env)
     chosen_attention_backend = install_attention_backend(venv, plan)
     print(f"[setup] Selected sparse attention backend: {chosen_attention_backend}")
+
+    native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
+    if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
+        print(f"[setup] Steering native source builds to CUDA toolkit root: {native_diagnostics['cuda_toolkit_root']}")
+    if native_diagnostics and native_diagnostics.get("msvc"):
+        print(f"[setup] Windows MSVC native build env: {json.dumps(native_diagnostics['msvc'], indent=2)}")
 
     with tempfile.TemporaryDirectory(prefix="trellis-text-setup-") as tmp:
         install_core_native_dependencies(venv, Path(tmp), native_build_env)

@@ -25,6 +25,7 @@ TRELLIS_REF = "442aa1e1afb9014e80681d3bf604e8d728a86ee7"
 TRELLIS_ZIP = f"https://github.com/microsoft/TRELLIS/archive/{TRELLIS_REF}.zip"
 UTILS3D_REF = "git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8"
 FLEXICUBES_SUBMODULE_PATH = "trellis/representations/mesh/flexicubes"
+TEXT_ONLY_VENDOR_MARKER = ".trellis-text-only"
 
 PURE_PACKAGES = [
     "easydict",
@@ -103,6 +104,39 @@ def vendor_trellis(dest: Path) -> None:
         raise RuntimeError("No official trellis/ files were extracted. Check TRELLIS_REF/archive layout.")
     print(f"  trellis/ extracted ({extracted} files).")
     sync_trellis_runtime_submodules(dest)
+    patch_trellis_text_only_exports(dest)
+
+
+def patch_trellis_text_only_exports(dest: Path) -> None:
+    """Prevent image-only TRELLIS pipelines from being imported in text-only runtime.
+
+    Official TRELLIS exposes every pipeline from `trellis/pipelines/__init__.py`.
+    Importing that module pulls the image-to-3D pipeline, which imports `rembg`.
+    This extension intentionally does not ship image preprocessing dependencies,
+    so the vendored pipeline package must export only the native text pipeline.
+    """
+
+    pipelines_dir = dest / "trellis" / "pipelines"
+    pipelines_init = pipelines_dir / "__init__.py"
+    text_pipeline = pipelines_dir / "trellis_text_to_3d.py"
+    if not text_pipeline.exists():
+        raise RuntimeError(f"Missing TRELLIS text pipeline file: {text_pipeline}")
+    pipelines_init.write_text(
+        "\"\"\"Text-only TRELLIS pipeline exports for Modly.\"\"\"\n"
+        "\n"
+        "from .trellis_text_to_3d import TrellisTextTo3DPipeline\n"
+        "\n"
+        "__all__ = [\"TrellisTextTo3DPipeline\"]\n",
+        encoding="utf-8",
+    )
+    print("  Patched trellis/pipelines/__init__.py for text-only exports.")
+
+
+def write_text_only_vendor_marker(dest: Path) -> None:
+    (dest / TEXT_ONLY_VENDOR_MARKER).write_text(
+        "text-only TRELLIS vendor prepared by build_vendor.py\n",
+        encoding="utf-8",
+    )
 
 
 def trellis_submodule_ref(path: str) -> tuple[str, str]:
@@ -169,6 +203,7 @@ def main() -> None:
     vendor_trellis(VENDOR)
 
     clean_forbidden_vendor_dirs(VENDOR)
+    write_text_only_vendor_marker(VENDOR)
     print("\nDone. vendor/ contains pure-Python TRELLIS text runtime assets only.")
 
 
