@@ -28,6 +28,10 @@ NVDIFFRAST_SOURCE_REF = "v0.4.0"
 MIP_SPLATTING_SOURCE_REPO = "https://github.com/autonomousvision/mip-splatting.git"
 MIP_SPLATTING_SOURCE_REF = "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9"
 MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY = "submodules/diff-gaussian-rasterization"
+VENDOR_REQUIRED_PATHS = (
+    Path("vendor") / "trellis" / "__init__.py",
+    Path("vendor") / "utils3d",
+)
 
 PYTHON_RUNTIME_DEPENDENCIES = (
     "Pillow",
@@ -424,6 +428,36 @@ def pip(venv: Path, *args: str, env: dict[str, str] | None = None) -> None:
     run([str(venv_bin(venv, "python")), "-m", "pip", *args], env=env)
 
 
+def vendor_sources_ready(ext_dir: Path) -> bool:
+    return all((ext_dir / relative_path).exists() for relative_path in VENDOR_REQUIRED_PATHS)
+
+
+def ensure_vendor_sources(ext_dir: Path, venv: Path) -> None:
+    if vendor_sources_ready(ext_dir):
+        print("[setup] vendor/ already contains TRELLIS text runtime sources.")
+        return
+
+    build_vendor = ext_dir / "build_vendor.py"
+    if not build_vendor.exists():
+        raise RuntimeError(
+            f"Missing {build_vendor}. Cannot populate vendor/ with official TRELLIS text runtime sources. "
+            "Reinstall the extension from the GitHub repository."
+        )
+
+    print("[setup] Populating vendor/ with official TRELLIS text runtime sources ...")
+    try:
+        run([str(venv_bin(venv, "python")), str(build_vendor)], cwd=ext_dir)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Failed to populate vendor/ with official TRELLIS text runtime sources. "
+            "Check network access to GitHub/PyPI and rerun setup."
+        ) from exc
+
+    if not vendor_sources_ready(ext_dir):
+        missing = [str(path) for path in VENDOR_REQUIRED_PATHS if not (ext_dir / path).exists()]
+        raise RuntimeError("vendor/ was populated but required runtime sources are still missing: " + ", ".join(missing))
+
+
 def pip_install(venv: Path, *packages: str, env: dict[str, str] | None = None, no_build_isolation: bool = False) -> None:
     cmd = ["install"]
     if no_build_isolation:
@@ -581,6 +615,7 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     print(f"[setup] Platform install plan: {plan.name} ({platform_label()})")
     run([python_exe, "-m", "venv", str(venv)])
     pip(venv, "install", "--upgrade", "pip", "setuptools", "wheel")
+    ensure_vendor_sources(ext_dir, venv)
 
     torch_pkgs, torch_index, cuda_tag = select_torch(gpu_sm, cuda_version)
     pip(venv, "install", *torch_pkgs, "--index-url", torch_index)

@@ -168,7 +168,10 @@ class TrellisTextGenerator(BaseGenerator):
             from trellis.pipelines import TrellisTextTo3DPipeline  # noqa: F401
             from trellis.utils import postprocessing_utils  # noqa: F401
         except ImportError as exc:
-            raise RuntimeError(f"[TrellisTextGenerator] vendor/ is incomplete: {exc}") from exc
+            raise RuntimeError(
+                f"[TrellisTextGenerator] vendor/ is incomplete: {exc}. "
+                "Re-run extension setup so build_vendor.py can populate vendor/ with official TRELLIS sources."
+            ) from exc
 
     def _require_runtime_dependency(self, module_name: str, package_name: str, *, allow_vendor: bool = True) -> None:
         origin = module_spec_origin(module_name)

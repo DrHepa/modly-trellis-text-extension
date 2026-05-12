@@ -69,6 +69,8 @@ Modly invokes `setup.py` automatically when the extension is installed. The setu
 
 All pip operations are executed as `python -m pip` inside the extension venv. This is intentional: on Windows, directly executing `venv\\Scripts\\pip.exe` while upgrading `pip` can fail because the wrapper is trying to replace itself.
 
+During setup, `build_vendor.py` is also executed automatically if `vendor/` does not already contain the official TRELLIS text runtime sources. This is required for runtime imports such as `trellis.pipelines.TrellisTextTo3DPipeline`. If vendor population fails, check network access to GitHub and PyPI, then rerun extension setup.
+
 For local install-plan diagnostics only:
 
 ```bash
@@ -113,7 +115,7 @@ If Windows setup fails while compiling a native extension, verify that **Visual 
 
 ## Vendoring
 
-The repository starts with a placeholder `vendor/.gitkeep`. Populate pure-Python vendor sources with:
+The repository starts with a placeholder `vendor/.gitkeep`. Modly setup populates pure-Python vendor sources automatically. For development, you can also run the vendoring step manually:
 
 ```bash
 python3 build_vendor.py

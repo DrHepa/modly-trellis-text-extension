@@ -60,6 +60,8 @@ def validate_setup_exclusions() -> None:
     require("vswhere.exe" in setup and "vcvars64.bat" in setup, "setup.py must locate and load Visual Studio Build Tools on Windows")
     require("DISTUTILS_USE_SDK" in setup and "MSSdk" in setup, "setup.py must set Windows native build SDK flags")
     require("MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT" in setup, "setup.py must allow explicit CUDA Toolkit override")
+    require("ensure_vendor_sources(ext_dir, venv)" in setup, "setup.py must populate vendor/ during extension setup")
+    require("build_vendor.py" in setup and "VENDOR_REQUIRED_PATHS" in setup, "setup.py must validate required TRELLIS vendor sources")
 
 
 def validate_vendor_placeholder() -> None:
@@ -73,6 +75,7 @@ def validate_readme() -> None:
     require("python -m pip" in readme, "README must document why setup uses python -m pip")
     require("Visual Studio Build Tools 2022" in readme, "README must document Windows native build prerequisites")
     require("vcvars64.bat" in readme, "README must mention automatic MSVC environment loading")
+    require("build_vendor.py" in readme and "trellis.pipelines.TrellisTextTo3DPipeline" in readme, "README must document automatic vendor population")
 
 
 def main() -> None:
