@@ -32,7 +32,7 @@ VENDOR_REQUIRED_PATHS = (
     Path("vendor") / "trellis" / "__init__.py",
     Path("vendor") / "trellis" / "pipelines" / "trellis_text_to_3d.py",
     Path("vendor") / "utils3d",
-    Path("vendor") / ".trellis-text-only-v3",
+    Path("vendor") / ".trellis-text-only-v4",
 )
 
 PYTHON_RUNTIME_DEPENDENCIES = (

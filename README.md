@@ -75,7 +75,9 @@ The vendoring step patches TRELLIS pipeline exports for this text-only extension
 
 The vendoring step also makes `open3d` optional inside the official text pipeline. TRELLIS imports `open3d` for mesh-conditioned variant generation, but the Modly node only uses prompt-to-mesh generation. Requiring `open3d` at import time would break Linux ARM64 and other platforms where Open3D wheels are not available.
 
-Setup uses a versioned marker, `vendor/.trellis-text-only-v3`, so existing installs with older vendored TRELLIS sources are regenerated automatically.
+Setup uses a versioned marker, `vendor/.trellis-text-only-v4`, so existing installs with older vendored TRELLIS sources are regenerated automatically.
+
+The vendoring step also patches TRELLIS `from_pretrained()` to accept a `config_file` argument. This is required because the extension localizes auxiliary model references into `pipeline.text-localized.json` before loading the native text pipeline.
 
 The vendoring step also removes the hard `kaolin` dependency from the FlexiCubes helper. Upstream FlexiCubes imports `kaolin.utils.testing.check_tensor` only for shape assertions; this extension patches in an equivalent local helper instead of pulling the full Kaolin native stack.
 

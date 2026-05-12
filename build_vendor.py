@@ -25,7 +25,7 @@ TRELLIS_REF = "442aa1e1afb9014e80681d3bf604e8d728a86ee7"
 TRELLIS_ZIP = f"https://github.com/microsoft/TRELLIS/archive/{TRELLIS_REF}.zip"
 UTILS3D_REF = "git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8"
 FLEXICUBES_SUBMODULE_PATH = "trellis/representations/mesh/flexicubes"
-TEXT_ONLY_VENDOR_MARKER = ".trellis-text-only-v3"
+TEXT_ONLY_VENDOR_MARKER = ".trellis-text-only-v4"
 
 PURE_PACKAGES = [
     "easydict",
@@ -104,8 +104,45 @@ def vendor_trellis(dest: Path) -> None:
         raise RuntimeError("No official trellis/ files were extracted. Check TRELLIS_REF/archive layout.")
     print(f"  trellis/ extracted ({extracted} files).")
     sync_trellis_runtime_submodules(dest)
+    patch_trellis_config_file_support(dest)
     patch_trellis_text_only_exports(dest)
     patch_trellis_text_pipeline_optional_open3d(dest)
+
+
+def patch_trellis_config_file_support(dest: Path) -> None:
+    """Allow loading localized TRELLIS pipeline configs.
+
+    Official TRELLIS `from_pretrained()` hardcodes `pipeline.json`. The Modly
+    text extension localizes auxiliary model refs into `pipeline.text-localized.json`,
+    so the vendored pipeline loader must accept a `config_file` argument.
+    """
+
+    base_path = dest / "trellis" / "pipelines" / "base.py"
+    base = base_path.read_text(encoding="utf-8")
+    base_replacements = {
+        '    def from_pretrained(path: str) -> "Pipeline":\n': '    def from_pretrained(path: str, config_file: str = "pipeline.json") -> "Pipeline":\n',
+        '        is_local = os.path.exists(f"{path}/pipeline.json")\n': '        is_local = os.path.exists(f"{path}/{config_file}")\n',
+        '            config_file = f"{path}/pipeline.json"\n': '            config_file = f"{path}/{config_file}"\n',
+        '            config_file = hf_hub_download(path, "pipeline.json")\n': '            config_file = hf_hub_download(path, config_file)\n',
+    }
+    for old, new in base_replacements.items():
+        if old not in base:
+            raise RuntimeError(f"Expected TRELLIS base.py snippet was not found while adding config_file support: {old.strip()}")
+        base = base.replace(old, new, 1)
+    base_path.write_text(base, encoding="utf-8")
+
+    text_path = dest / "trellis" / "pipelines" / "trellis_text_to_3d.py"
+    text = text_path.read_text(encoding="utf-8")
+    text_replacements = {
+        '    def from_pretrained(path: str) -> "TrellisTextTo3DPipeline":\n': '    def from_pretrained(path: str, config_file: str = "pipeline.json") -> "TrellisTextTo3DPipeline":\n',
+        '        pipeline = super(TrellisTextTo3DPipeline, TrellisTextTo3DPipeline).from_pretrained(path)\n': '        pipeline = super(TrellisTextTo3DPipeline, TrellisTextTo3DPipeline).from_pretrained(path, config_file=config_file)\n',
+    }
+    for old, new in text_replacements.items():
+        if old not in text:
+            raise RuntimeError(f"Expected TRELLIS text pipeline snippet was not found while adding config_file support: {old.strip()}")
+        text = text.replace(old, new, 1)
+    text_path.write_text(text, encoding="utf-8")
+    print("  Patched TRELLIS Pipeline.from_pretrained() to support localized config_file loading.")
 
 
 def patch_trellis_text_only_exports(dest: Path) -> None:
@@ -165,7 +202,7 @@ def patch_trellis_text_pipeline_optional_open3d(dest: Path) -> None:
 
 def write_text_only_vendor_marker(dest: Path) -> None:
     (dest / TEXT_ONLY_VENDOR_MARKER).write_text(
-        "text-only TRELLIS vendor prepared by build_vendor.py; image exports disabled; open3d lazy-loaded; kaolin removed\n",
+        "text-only TRELLIS vendor prepared by build_vendor.py; config_file supported; image exports disabled; open3d lazy-loaded; kaolin removed\n",
         encoding="utf-8",
     )
 
