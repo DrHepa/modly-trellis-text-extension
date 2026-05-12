@@ -1,0 +1,18 @@
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+*.log
+
+# vendor/ starts with a placeholder, but populated TRELLIS/utils3d sources
+# should be committed for release builds once build_vendor.py has been run.
+
+# Local/generated model and output artifacts
+models/
+outputs/
+*.glb
+*.gltf
+*.debug.json

@@ -1,0 +1,104 @@
+{
+  "id": "trellis-text",
+  "name": "TRELLIS Text",
+  "type": "model",
+  "source": "https://github.com/DrHepa/modly-trellis-text-extension",
+  "description": "Text-only TRELLIS extension for Modly: prompt to textured GLB mesh using the official native TRELLIS text pipeline.",
+  "version": "0.1.0",
+  "author": "DrHepa",
+  "generator_class": "TrellisTextGenerator",
+  "tags": [
+    "text-to-3d",
+    "text-to-mesh",
+    "trellis",
+    "cuda"
+  ],
+  "nodes": [
+    {
+      "id": "text-to-mesh",
+      "name": "Text to Mesh",
+      "capability_id": "text-to-mesh",
+      "description": "Generate a textured GLB mesh from a text prompt using microsoft/TRELLIS-text-xlarge and the official native TRELLIS text pipeline.",
+      "input": "text",
+      "output": "mesh",
+      "weight_owner_id": "text-xlarge",
+      "hf_repo": "microsoft/TRELLIS-text-xlarge",
+      "download_check": "pipeline.json",
+      "params_schema": [
+        {
+          "id": "prompt",
+          "label": "Prompt",
+          "type": "text",
+          "default": "",
+          "tooltip": "Text prompt used by the native TRELLIS text-to-mesh pipeline."
+        },
+        {
+          "id": "sparse_steps",
+          "label": "Sparse Structure Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for sparse structure generation."
+        },
+        {
+          "id": "slat_steps",
+          "label": "Structured Latent Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for structured latent generation."
+        },
+        {
+          "id": "sparse_cfg",
+          "label": "Sparse CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for sparse structure generation."
+        },
+        {
+          "id": "slat_cfg",
+          "label": "Structured Latent CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for structured latent generation."
+        },
+        {
+          "id": "texture_size",
+          "label": "Texture Size",
+          "type": "select",
+          "options": [
+            { "value": 1024, "label": "1024" },
+            { "value": 2048, "label": "2048" },
+            { "value": 4096, "label": "4096" }
+          ],
+          "default": 1024,
+          "tooltip": "Resolution of the baked texture atlas used by official TRELLIS postprocessing."
+        },
+        {
+          "id": "simplify",
+          "label": "Simplify Ratio",
+          "type": "float",
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "tooltip": "Triangle simplification ratio used during GLB postprocessing."
+        },
+        {
+          "id": "seed",
+          "label": "Seed",
+          "type": "int",
+          "default": 42,
+          "min": 0,
+          "max": 2147483647,
+          "tooltip": "Seed for reproducibility. Click shuffle for a random seed."
+        }
+      ]
+    }
+  ]
+}
