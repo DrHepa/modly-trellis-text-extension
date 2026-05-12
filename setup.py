@@ -517,7 +517,16 @@ def uninstall_packages(venv: Path, *packages: str) -> None:
 
 
 def smoke_check_spconv(venv: Path, *, env: dict[str, str] | None = None) -> None:
-    python(venv, "-c", "import spconv.pytorch as spconv; print('[setup] spconv import OK:', getattr(spconv, '__version__', 'unknown'))", env=env)
+    # Import torch first so Windows registers PyTorch/CUDA DLL directories before
+    # spconv loads its native extension modules. The runtime generator does the
+    # same before importing native dependencies; setup's smoke test must match it
+    # or it can reject a valid wheel with a DLL-load false negative.
+    python(
+        venv,
+        "-c",
+        "import torch; import spconv.pytorch as spconv; print('[setup] spconv import OK:', getattr(spconv, '__version__', 'unknown'))",
+        env=env,
+    )
 
 
 def install_prebuilt_spconv(venv: Path, cuda_tag: str) -> None:

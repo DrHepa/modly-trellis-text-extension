@@ -65,6 +65,7 @@ def validate_setup_exclusions() -> None:
     require(".trellis-text-only-v4" in setup, "setup.py must require the versioned text-only vendor marker so stale vendor trees are rebuilt")
     require('"plyfile"' in setup, "setup.py must install plyfile for TRELLIS Gaussian PLY helpers")
     require("KNOWN_PREBUILT_SPCONV_CUDA_TAGS" in setup, "setup.py must restrict spconv fallback tags to known published wheels")
+    require("import torch; import spconv.pytorch as spconv" in setup, "spconv smoke check must import torch before spconv for Windows DLL paths")
     require(
         setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
         "setup.py must install wheel-first dependencies before Windows native compiler preflight",
