@@ -25,7 +25,7 @@ TRELLIS_REF = "442aa1e1afb9014e80681d3bf604e8d728a86ee7"
 TRELLIS_ZIP = f"https://github.com/microsoft/TRELLIS/archive/{TRELLIS_REF}.zip"
 UTILS3D_REF = "git+https://github.com/EasternJournalist/utils3d.git@9a4eb15e4021b67b12c460c7057d642626897ec8"
 FLEXICUBES_SUBMODULE_PATH = "trellis/representations/mesh/flexicubes"
-TEXT_ONLY_VENDOR_MARKER = ".trellis-text-only"
+TEXT_ONLY_VENDOR_MARKER = ".trellis-text-only-v3"
 
 PURE_PACKAGES = [
     "easydict",
@@ -105,6 +105,7 @@ def vendor_trellis(dest: Path) -> None:
     print(f"  trellis/ extracted ({extracted} files).")
     sync_trellis_runtime_submodules(dest)
     patch_trellis_text_only_exports(dest)
+    patch_trellis_text_pipeline_optional_open3d(dest)
 
 
 def patch_trellis_text_only_exports(dest: Path) -> None:
@@ -132,9 +133,39 @@ def patch_trellis_text_only_exports(dest: Path) -> None:
     print("  Patched trellis/pipelines/__init__.py for text-only exports.")
 
 
+def patch_trellis_text_pipeline_optional_open3d(dest: Path) -> None:
+    """Make open3d optional for the prompt-to-mesh text pipeline.
+
+    Official `trellis_text_to_3d.py` imports open3d at module import time, but
+    open3d is only used by `voxelize()`/`run_variant()` for mesh-conditioned
+    variants. The Modly text-only node uses `run(prompt=...)`, so requiring
+    open3d during module import is unnecessary and breaks platforms where
+    open3d wheels are unavailable.
+    """
+
+    pipeline_path = dest / "trellis" / "pipelines" / "trellis_text_to_3d.py"
+    source = pipeline_path.read_text(encoding="utf-8")
+    source = source.replace("import open3d as o3d\n", "")
+    source = source.replace("mesh: o3d.geometry.TriangleMesh", "mesh: Any")
+    source = source.replace(
+        "    def voxelize(self, mesh: Any) -> torch.Tensor:\n",
+        "    def voxelize(self, mesh: Any) -> torch.Tensor:\n"
+        "        try:\n"
+        "            import open3d as o3d\n"
+        "        except ImportError as exc:\n"
+        "            raise RuntimeError(\n"
+        "                \"open3d is required only for TRELLIS text run_variant()/mesh-conditioned variants. \"\n"
+        "                \"The Modly text-to-mesh node does not use this path.\"\n"
+        "            ) from exc\n",
+        1,
+    )
+    pipeline_path.write_text(source, encoding="utf-8")
+    print("  Patched trellis_text_to_3d.py so open3d is optional for prompt-to-mesh runtime.")
+
+
 def write_text_only_vendor_marker(dest: Path) -> None:
     (dest / TEXT_ONLY_VENDOR_MARKER).write_text(
-        "text-only TRELLIS vendor prepared by build_vendor.py\n",
+        "text-only TRELLIS vendor prepared by build_vendor.py; image exports disabled; open3d lazy-loaded; kaolin removed\n",
         encoding="utf-8",
     )
 
@@ -178,6 +209,26 @@ def vendor_flexicubes_submodule(dest: Path) -> None:
     if missing:
         raise RuntimeError("Failed to vendor FlexiCubes runtime files: " + ", ".join(missing))
     (package_dest / "__init__.py").write_text("from .flexicubes import FlexiCubes\n", encoding="utf-8")
+    patch_flexicubes_local_check_tensor(package_dest)
+
+
+def patch_flexicubes_local_check_tensor(package_dest: Path) -> None:
+    """Remove kaolin as a hard dependency from vendored FlexiCubes.
+
+    Upstream FlexiCubes imports `kaolin.utils.testing.check_tensor` only for
+    shape assertions. Pulling full kaolin into this extension would add a heavy
+    native dependency for a tiny helper, so we provide an equivalent local
+    checker for the FlexiCubes usage pattern.
+    """
+
+    flexicubes = package_dest / "flexicubes.py"
+    source = flexicubes.read_text(encoding="utf-8")
+    kaolin_import = "from kaolin.utils.testing import check_tensor\n"
+    replacement = '''\n\ndef check_tensor(tensor, shape=None, dtype=None, device=None, throw=True):\n    ok = torch.is_tensor(tensor)\n    if ok and shape is not None:\n        ok = len(tensor.shape) == len(shape) and all(expected is None or actual == expected for actual, expected in zip(tensor.shape, shape))\n    if ok and dtype is not None:\n        ok = tensor.dtype == dtype\n    if ok and device is not None:\n        ok = tensor.device == device\n    if throw and not ok:\n        raise AssertionError(f\"Invalid tensor: shape={getattr(tensor, 'shape', None)}, dtype={getattr(tensor, 'dtype', None)}, device={getattr(tensor, 'device', None)}\")\n    return ok\n'''
+    if kaolin_import not in source:
+        raise RuntimeError("Expected kaolin check_tensor import was not found in FlexiCubes source.")
+    flexicubes.write_text(source.replace(kaolin_import, replacement, 1), encoding="utf-8")
+    print("  Patched FlexiCubes to use a local check_tensor helper instead of kaolin.")
 
 
 def sync_trellis_runtime_submodules(dest: Path) -> None:

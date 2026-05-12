@@ -62,7 +62,8 @@ def validate_setup_exclusions() -> None:
     require("MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT" in setup, "setup.py must allow explicit CUDA Toolkit override")
     require("ensure_vendor_sources(ext_dir, venv)" in setup, "setup.py must populate vendor/ during extension setup")
     require("build_vendor.py" in setup and "VENDOR_REQUIRED_PATHS" in setup, "setup.py must validate required TRELLIS vendor sources")
-    require(".trellis-text-only" in setup, "setup.py must require the text-only vendor marker so stale vendor trees are rebuilt")
+    require(".trellis-text-only-v3" in setup, "setup.py must require the versioned text-only vendor marker so stale vendor trees are rebuilt")
+    require('"plyfile"' in setup, "setup.py must install plyfile for TRELLIS Gaussian PLY helpers")
     require("KNOWN_PREBUILT_SPCONV_CUDA_TAGS" in setup, "setup.py must restrict spconv fallback tags to known published wheels")
     require(
         setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
@@ -76,6 +77,12 @@ def validate_build_vendor_text_only_patch() -> None:
     require("from .trellis_text_to_3d import TrellisTextTo3DPipeline" in build_vendor, "build_vendor.py must export only TrellisTextTo3DPipeline")
     require("rembg" in build_vendor, "build_vendor.py must document why image pipeline imports are excluded")
     require("TEXT_ONLY_VENDOR_MARKER" in build_vendor, "build_vendor.py must stamp text-only vendor trees")
+    require("patch_trellis_text_pipeline_optional_open3d" in build_vendor, "build_vendor.py must make open3d optional for prompt-to-mesh imports")
+    require(".trellis-text-only-v3" in build_vendor, "build_vendor.py must stamp versioned text-only vendor trees")
+    require("patch_flexicubes_local_check_tensor" in build_vendor, "build_vendor.py must remove kaolin from vendored FlexiCubes")
+    require("from kaolin.utils.testing import check_tensor" in build_vendor and "local check_tensor" in build_vendor, "build_vendor.py must patch kaolin check_tensor import")
+    require("source.replace(\"import open3d as o3d" in build_vendor, "build_vendor.py must remove eager open3d imports from the text pipeline")
+    require("open3d is required only for TRELLIS text run_variant" in build_vendor, "build_vendor.py must preserve a clear run_variant open3d error")
 
 
 def validate_vendor_placeholder() -> None:
@@ -92,6 +99,9 @@ def validate_readme() -> None:
     require("build_vendor.py" in readme and "trellis.pipelines.TrellisTextTo3DPipeline" in readme, "README must document automatic vendor population")
     require("CUDA Toolkit 12.8" in readme and "spconv-cu128" in readme, "README must document Windows CUDA Toolkit and spconv-cu128 caveat")
     require("rembg" in readme and "TrellisTextTo3DPipeline" in readme, "README must document text-only TRELLIS pipeline export patching")
+    require("open3d" in readme and "prompt-to-mesh" in readme, "README must document optional open3d vendoring patch")
+    require(".trellis-text-only-v3" in readme, "README must document versioned vendor marker")
+    require("kaolin" in readme, "README must document kaolin removal from vendored FlexiCubes")
 
 
 def main() -> None:

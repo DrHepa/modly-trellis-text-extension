@@ -73,6 +73,12 @@ During setup, `build_vendor.py` is also executed automatically if `vendor/` does
 
 The vendoring step patches TRELLIS pipeline exports for this text-only extension. Official TRELLIS exposes image and text pipelines from the same package; importing the image pipeline pulls image-only dependencies such as `rembg`. This extension rewrites `trellis/pipelines/__init__.py` so only `TrellisTextTo3DPipeline` is exported.
 
+The vendoring step also makes `open3d` optional inside the official text pipeline. TRELLIS imports `open3d` for mesh-conditioned variant generation, but the Modly node only uses prompt-to-mesh generation. Requiring `open3d` at import time would break Linux ARM64 and other platforms where Open3D wheels are not available.
+
+Setup uses a versioned marker, `vendor/.trellis-text-only-v3`, so existing installs with older vendored TRELLIS sources are regenerated automatically.
+
+The vendoring step also removes the hard `kaolin` dependency from the FlexiCubes helper. Upstream FlexiCubes imports `kaolin.utils.testing.check_tensor` only for shape assertions; this extension patches in an equivalent local helper instead of pulling the full Kaolin native stack.
+
 For local install-plan diagnostics only:
 
 ```bash
