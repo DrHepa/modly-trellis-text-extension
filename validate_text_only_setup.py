@@ -56,6 +56,10 @@ def validate_setup_exclusions() -> None:
     require("targets/aarch64-linux" in setup, "cumm patch must know ARM64 CUDA target include/lib paths")
     require('venv_bin(venv, "python")), "-m", "pip"' in setup, "setup.py must invoke pip via venv python -m pip")
     require('venv_bin(venv, "pip")' not in setup, "setup.py must not invoke pip.exe directly")
+    require("resolve_windows_msvc_env" in setup, "setup.py must prepare MSVC env for Windows native CUDA builds")
+    require("vswhere.exe" in setup and "vcvars64.bat" in setup, "setup.py must locate and load Visual Studio Build Tools on Windows")
+    require("DISTUTILS_USE_SDK" in setup and "MSSdk" in setup, "setup.py must set Windows native build SDK flags")
+    require("MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT" in setup, "setup.py must allow explicit CUDA Toolkit override")
 
 
 def validate_vendor_placeholder() -> None:
@@ -67,6 +71,8 @@ def validate_readme() -> None:
     require("Modly TRELLIS Text Extension" in readme, "README must have a professional project title")
     require("__cudaLaunch" in readme, "README must document the ARM64 CUDA toolkit mismatch failure mode")
     require("python -m pip" in readme, "README must document why setup uses python -m pip")
+    require("Visual Studio Build Tools 2022" in readme, "README must document Windows native build prerequisites")
+    require("vcvars64.bat" in readme, "README must mention automatic MSVC environment loading")
 
 
 def main() -> None:

@@ -155,9 +155,16 @@ def candidate_cuda_toolkit_roots(cuda_version: int, env: dict[str, str] | None =
         if raw:
             candidates.append(Path(raw).expanduser())
     toolkit_version = cuda_version_to_toolkit_version(cuda_version)
-    if toolkit_version:
-        candidates.append(Path(f"/usr/local/cuda-{toolkit_version}"))
-    candidates.append(Path("/usr/local/cuda"))
+    if is_windows():
+        program_files = source_env.get("ProgramFiles", r"C:\Program Files")
+        cuda_base = Path(program_files) / "NVIDIA GPU Computing Toolkit" / "CUDA"
+        if toolkit_version:
+            candidates.append(cuda_base / f"v{toolkit_version}")
+        candidates.extend(sorted(cuda_base.glob("v*"), reverse=True) if cuda_base.exists() else [])
+    else:
+        if toolkit_version:
+            candidates.append(Path(f"/usr/local/cuda-{toolkit_version}"))
+        candidates.append(Path("/usr/local/cuda"))
     deduped: list[Path] = []
     seen: set[str] = set()
     for candidate in candidates:
@@ -176,12 +183,159 @@ def resolve_cuda_toolkit_root(cuda_version: int, env: dict[str, str] | None = No
 
 
 def cuda_toolkit_library_dirs(toolkit_root: Path) -> tuple[Path, ...]:
+    if is_windows():
+        return tuple(path for path in (toolkit_root / "lib" / "x64", toolkit_root / "lib") if path.exists())
+
     candidates = [toolkit_root / "lib64"]
     if is_linux_arm64():
         candidates.extend([toolkit_root / "targets" / "aarch64-linux" / "lib", toolkit_root / "targets" / "sbsa-linux" / "lib"])
     elif is_linux():
         candidates.append(toolkit_root / "targets" / "x86_64-linux" / "lib")
     return tuple(path for path in candidates if path.exists())
+
+
+def command_available(command: str, env: dict[str, str]) -> bool:
+    checker = ["where", command] if is_windows() else ["which", command]
+    return subprocess.run(checker, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env).returncode == 0
+
+
+def candidate_vswhere_paths(env: dict[str, str]) -> list[Path]:
+    candidates = []
+    for key, fallback in (("ProgramFiles(x86)", r"C:\Program Files (x86)"), ("ProgramFiles", r"C:\Program Files")):
+        root = env.get(key, fallback)
+        candidates.append(Path(root) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe")
+    return candidates
+
+
+def parse_windows_set_output(output: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for line in output.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key:
+            parsed[key] = value
+    return parsed
+
+
+def resolve_windows_msvc_env(build_env: dict[str, str]) -> tuple[dict[str, str], dict[str, object]]:
+    env = dict(build_env)
+    diagnostics: dict[str, object] = {"strategy": "existing-path"}
+
+    if command_available("cl.exe", env):
+        diagnostics["cl.exe"] = "found-on-path"
+        env.setdefault("DISTUTILS_USE_SDK", "1")
+        env.setdefault("MSSdk", "1")
+        return env, diagnostics
+
+    vswhere = next((path for path in candidate_vswhere_paths(env) if path.exists()), None)
+    diagnostics["vswhere_candidates"] = [str(path) for path in candidate_vswhere_paths(env)]
+    if vswhere is None:
+        raise RuntimeError(
+            "Windows native CUDA builds require Microsoft Visual Studio Build Tools 2022. "
+            "Install the 'Desktop development with C++' workload, including MSVC v143 and a Windows SDK. "
+            "Could not find vswhere.exe to locate the toolchain."
+        )
+
+    install_path = subprocess.check_output(
+        [
+            str(vswhere),
+            "-latest",
+            "-products",
+            "*",
+            "-requires",
+            "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+            "-property",
+            "installationPath",
+        ],
+        text=True,
+        env=env,
+    ).strip()
+    if not install_path:
+        raise RuntimeError(
+            "Windows native CUDA builds require MSVC. Visual Studio was found, but the VC++ x64 tools "
+            "component is missing. Install Visual Studio Build Tools 2022 with 'Desktop development with C++'."
+        )
+
+    vcvars = Path(install_path) / "VC" / "Auxiliary" / "Build" / "vcvars64.bat"
+    if not vcvars.exists():
+        raise RuntimeError(f"Could not find vcvars64.bat at {vcvars}. Repair Visual Studio Build Tools 2022.")
+
+    vcvars_cmd = f'"{vcvars}" amd64 >nul && set'
+    vcvars_output = subprocess.check_output(["cmd.exe", "/s", "/c", vcvars_cmd], text=True, env=env)
+    msvc_env = parse_windows_set_output(vcvars_output)
+    merged = dict(env)
+    merged.update(msvc_env)
+    merged.setdefault("DISTUTILS_USE_SDK", "1")
+    merged.setdefault("MSSdk", "1")
+    if not command_available("cl.exe", merged):
+        raise RuntimeError("vcvars64.bat completed but cl.exe is still not available on PATH.")
+
+    diagnostics.update({"strategy": "vswhere-vcvars64", "vswhere": str(vswhere), "vcvars64": str(vcvars), "cl.exe": "found-after-vcvars"})
+    return merged, diagnostics
+
+
+def resolve_native_build_env(
+    venv: Path,
+    *,
+    gpu_sm: int,
+    cuda_version: int,
+    build_env: dict[str, str],
+) -> tuple[dict[str, str], dict[str, object] | None]:
+    if is_linux_arm64():
+        return source_build_env_overrides(gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env, venv=venv)
+
+    if not is_windows():
+        return build_env, None
+
+    native_env = dict(build_env)
+    diagnostics: dict[str, object] = {"platform": "windows-native-cuda"}
+    venv_bin_dir = venv_bin(venv, "python").parent
+    native_env = prepend_directory_to_path(native_env, venv_bin_dir)
+
+    toolkit_root = resolve_cuda_toolkit_root(cuda_version, env=native_env)
+    diagnostics["cuda_toolkit_root_candidates"] = [str(path) for path in candidate_cuda_toolkit_roots(cuda_version, env=native_env)]
+    if toolkit_root is None:
+        raise RuntimeError(
+            "Windows native CUDA builds require the CUDA Toolkit. Could not resolve CUDA_HOME/CUDA_PATH. "
+            "Install the NVIDIA CUDA Toolkit matching your PyTorch CUDA wheel, or set MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT."
+        )
+
+    native_env["CUDA_HOME"] = str(toolkit_root)
+    native_env["CUDA_PATH"] = str(toolkit_root)
+    native_env["CUDACXX"] = str(toolkit_root / "bin" / "nvcc.exe")
+    prepend_env_path(native_env, "PATH", venv_bin_dir, toolkit_root / "bin")
+    include_dir = toolkit_root / "include"
+    if include_dir.exists():
+        prepend_env_path(native_env, "INCLUDE", include_dir)
+    library_dirs = cuda_toolkit_library_dirs(toolkit_root)
+    if library_dirs:
+        prepend_env_path(native_env, "LIB", *library_dirs)
+        prepend_env_path(native_env, "LIBPATH", *library_dirs)
+
+    native_env, msvc_diagnostics = resolve_windows_msvc_env(native_env)
+    # vcvars64.bat rewrites PATH/INCLUDE/LIB. Re-prepend the selected extension
+    # venv and CUDA toolkit paths afterwards so PyTorch CUDA extensions compile
+    # against the same toolkit selected by setup.py.
+    native_env["CUDA_HOME"] = str(toolkit_root)
+    native_env["CUDA_PATH"] = str(toolkit_root)
+    native_env["CUDACXX"] = str(toolkit_root / "bin" / "nvcc.exe")
+    prepend_env_path(native_env, "PATH", venv_bin_dir, toolkit_root / "bin")
+    if include_dir.exists():
+        prepend_env_path(native_env, "INCLUDE", include_dir)
+    if library_dirs:
+        prepend_env_path(native_env, "LIB", *library_dirs)
+        prepend_env_path(native_env, "LIBPATH", *library_dirs)
+    diagnostics.update(
+        {
+            "cuda_toolkit_root": str(toolkit_root),
+            "CUDA_HOME": native_env["CUDA_HOME"],
+            "CUDA_PATH": native_env["CUDA_PATH"],
+            "CUDACXX": native_env["CUDACXX"],
+            "msvc": msvc_diagnostics,
+        }
+    )
+    return native_env, diagnostics
 
 
 def source_build_env_overrides(*, gpu_sm: int, cuda_version: int, build_env: dict[str, str] | None = None, venv: Path | None = None) -> tuple[dict[str, str], dict[str, object]]:
@@ -409,6 +563,11 @@ def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
     if is_linux_arm64():
         _, diagnostics = source_build_env_overrides(gpu_sm=gpu_sm, cuda_version=cuda_version)
         description["source_build_env"] = diagnostics
+    elif is_windows():
+        description["native_build_env"] = {
+            "strategy": "windows-msvc-cuda-env",
+            "requires": ["Visual Studio Build Tools 2022 with Desktop development with C++", "NVIDIA CUDA Toolkit"],
+        }
     return description
 
 
@@ -430,9 +589,11 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     chosen_attention_backend = install_attention_backend(venv, plan)
     print(f"[setup] Selected sparse attention backend: {chosen_attention_backend}")
 
-    native_build_env, native_diagnostics = source_build_env_overrides(gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env, venv=venv)
-    if native_diagnostics.get("cuda_toolkit_root"):
+    native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
+    if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
         print(f"[setup] Steering native source builds to CUDA toolkit root: {native_diagnostics['cuda_toolkit_root']}")
+    if native_diagnostics and native_diagnostics.get("msvc"):
+        print(f"[setup] Windows MSVC native build env: {json.dumps(native_diagnostics['msvc'], indent=2)}")
     with tempfile.TemporaryDirectory(prefix="trellis-text-setup-") as tmp:
         install_core_native_dependencies(venv, Path(tmp), native_build_env)
 

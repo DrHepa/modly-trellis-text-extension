@@ -27,7 +27,7 @@ This extension requires an NVIDIA CUDA runtime. CPU-only execution, macOS, and n
 | --- | --- | --- |
 | Linux x86_64 + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, prebuilt `spconv-*` when available, and `xformers` with `flash-attn` fallback. |
 | Linux ARM64/aarch64 + NVIDIA CUDA | Supported | Builds `cumm`/`spconv` from source and applies an ARM64 CUDA discovery hotfix before building `spconv`. |
-| Windows + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, `xformers`, and prebuilt `spconv-*` packages. Requires compatible MSVC/CUDA Build Tools for native packages. |
+| Windows + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, `xformers`, prebuilt `spconv-*` packages, and source builds for native TRELLIS postprocessing extensions. Requires CUDA Toolkit and Visual Studio Build Tools 2022. |
 | macOS | Not supported | The TRELLIS text runtime depends on CUDA and calls `.cuda()`. |
 
 ## Models
@@ -99,6 +99,17 @@ macro "__cudaLaunch" requires 2 arguments, but only 1 given
 ```
 
 which can happen when `nvcc` comes from `/usr/local/cuda-12.8` but headers are discovered from a different `/usr/local/cuda` installation.
+
+### Windows native build note
+
+Windows installation compiles native CUDA extensions such as `diff_gaussian_rasterization` and `nvdiffrast`. The setup script prepares the native build environment by:
+
+- resolving the NVIDIA CUDA Toolkit through `CUDA_HOME`, `CUDA_PATH`, `MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT`, or the default CUDA Toolkit install directory;
+- locating Visual Studio Build Tools through `vswhere.exe`;
+- loading `vcvars64.bat` so `cl.exe`, `INCLUDE`, `LIB`, and `PATH` are available to PyTorch CUDA extension builds;
+- setting `DISTUTILS_USE_SDK=1` for setuptools/PyTorch native extension builds.
+
+If Windows setup fails while compiling a native extension, verify that **Visual Studio Build Tools 2022** is installed with the **Desktop development with C++** workload, including MSVC v143 and a Windows SDK. Also verify that a matching NVIDIA CUDA Toolkit is installed.
 
 ## Vendoring
 
