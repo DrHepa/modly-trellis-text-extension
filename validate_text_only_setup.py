@@ -62,6 +62,8 @@ def validate_setup_exclusions() -> None:
     require("MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT" in setup, "setup.py must allow explicit CUDA Toolkit override")
     require("ensure_vendor_sources(ext_dir, venv)" in setup, "setup.py must populate vendor/ during extension setup")
     require("build_vendor.py" in setup and "VENDOR_REQUIRED_PATHS" in setup, "setup.py must validate required TRELLIS vendor sources")
+    require("KNOWN_PREBUILT_SPCONV_CUDA_TAGS" in setup, "setup.py must restrict spconv fallback tags to known published wheels")
+    require("resolve_native_build_env(venv" in setup and "pip(venv, \"install\", *torch_pkgs" in setup, "setup.py must run Windows native preflight before long dependency installs")
 
 
 def validate_vendor_placeholder() -> None:
@@ -76,6 +78,7 @@ def validate_readme() -> None:
     require("Visual Studio Build Tools 2022" in readme, "README must document Windows native build prerequisites")
     require("vcvars64.bat" in readme, "README must mention automatic MSVC environment loading")
     require("build_vendor.py" in readme and "trellis.pipelines.TrellisTextTo3DPipeline" in readme, "README must document automatic vendor population")
+    require("CUDA Toolkit 12.8" in readme and "spconv-cu128" in readme, "README must document Windows CUDA Toolkit and spconv-cu128 caveat")
 
 
 def main() -> None:

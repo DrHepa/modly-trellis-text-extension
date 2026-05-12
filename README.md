@@ -113,6 +113,10 @@ Windows installation compiles native CUDA extensions such as `diff_gaussian_rast
 
 If Windows setup fails while compiling a native extension, verify that **Visual Studio Build Tools 2022** is installed with the **Desktop development with C++** workload, including MSVC v143 and a Windows SDK. Also verify that a matching NVIDIA CUDA Toolkit is installed.
 
+For current PyTorch `cu128` installs, this usually means installing the **CUDA Toolkit 12.8** from NVIDIA, not just the GPU driver. If CUDA is installed in a non-standard location, set `MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT` to the Toolkit root before installing the extension.
+
+The setup uses only known upstream `spconv` prebuilt CUDA wheel tags (`cu120`, `cu118`) instead of trying every PyTorch CUDA tag. This avoids misleading `spconv-cu128` errors on Windows while still allowing the prebuilt fallback path that upstream currently publishes.
+
 ## Vendoring
 
 The repository starts with a placeholder `vendor/.gitkeep`. Modly setup populates pure-Python vendor sources automatically. For development, you can also run the vendoring step manually:

@@ -62,6 +62,7 @@ CUMM_SUPPORTED_CUDA_ARCHES = frozenset({"5.2", "6.0", "6.1", "7.0", "7.2", "7.5"
 CUMM_MAX_SUPPORTED_SM = 90
 CUMM_MAX_SUPPORTED_ARCH = "9.0"
 CUMM_FORWARD_COMPAT_ARCH = "9.0+PTX"
+KNOWN_PREBUILT_SPCONV_CUDA_TAGS = ("cu120", "cu118")
 
 
 @dataclass(frozen=True)
@@ -517,7 +518,7 @@ def smoke_check_spconv(venv: Path, *, env: dict[str, str] | None = None) -> None
 
 
 def install_prebuilt_spconv(venv: Path, cuda_tag: str) -> None:
-    fallbacks = [cuda_tag, "cu128", "cu124", "cu122", "cu121", "cu120", "cu118"]
+    fallbacks = [tag for tag in (cuda_tag, *KNOWN_PREBUILT_SPCONV_CUDA_TAGS) if tag in KNOWN_PREBUILT_SPCONV_CUDA_TAGS]
     tried: list[str] = []
     last_error: subprocess.CalledProcessError | None = None
     for tag in fallbacks:
@@ -532,7 +533,11 @@ def install_prebuilt_spconv(venv: Path, cuda_tag: str) -> None:
         except subprocess.CalledProcessError as exc:
             last_error = exc
             print(f"[setup] {pkg} not available; trying next fallback.")
-    raise RuntimeError(f"Failed to install spconv. Tried: {', '.join(tried)}") from last_error
+    raise RuntimeError(
+        "Failed to install a prebuilt spconv wheel. "
+        f"Tried: {', '.join(tried)}. "
+        "The upstream spconv project does not currently publish wheels for every CUDA tag/Python version."
+    ) from last_error
 
 
 def install_spconv_from_source(venv: Path, gpu_sm: int, cuda_version: int, build_env: dict[str, str]) -> None:
@@ -586,7 +591,7 @@ def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
         "torch_packages": torch_pkgs,
         "torch_index": torch_index,
         "cuda_tag": cuda_tag,
-        "spconv_strategy": "source-with-cumm-cuda-discovery-patch" if is_linux_arm64() else "prebuilt",
+        "spconv_strategy": "source-with-cumm-cuda-discovery-patch" if is_linux_arm64() else f"prebuilt-known-tags:{','.join(KNOWN_PREBUILT_SPCONV_CUDA_TAGS)}",
         "attention_backends": [backend for backend, _ in plan.attention_backends],
         "native_from_git": {
             "nvdiffrast": f"{NVDIFFRAST_SOURCE_REPO}@{NVDIFFRAST_SOURCE_REF}",
@@ -617,6 +622,12 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     pip(venv, "install", "--upgrade", "pip", "setuptools", "wheel")
     ensure_vendor_sources(ext_dir, venv)
 
+    native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
+    if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
+        print(f"[setup] Steering native source builds to CUDA toolkit root: {native_diagnostics['cuda_toolkit_root']}")
+    if native_diagnostics and native_diagnostics.get("msvc"):
+        print(f"[setup] Windows MSVC native build env: {json.dumps(native_diagnostics['msvc'], indent=2)}")
+
     torch_pkgs, torch_index, cuda_tag = select_torch(gpu_sm, cuda_version)
     pip(venv, "install", *torch_pkgs, "--index-url", torch_index)
     install_python_runtime_dependencies(venv)
@@ -624,11 +635,6 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     chosen_attention_backend = install_attention_backend(venv, plan)
     print(f"[setup] Selected sparse attention backend: {chosen_attention_backend}")
 
-    native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
-    if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
-        print(f"[setup] Steering native source builds to CUDA toolkit root: {native_diagnostics['cuda_toolkit_root']}")
-    if native_diagnostics and native_diagnostics.get("msvc"):
-        print(f"[setup] Windows MSVC native build env: {json.dumps(native_diagnostics['msvc'], indent=2)}")
     with tempfile.TemporaryDirectory(prefix="trellis-text-setup-") as tmp:
         install_core_native_dependencies(venv, Path(tmp), native_build_env)
 
