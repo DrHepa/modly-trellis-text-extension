@@ -552,7 +552,7 @@ def smoke_check_spconv(venv: Path, *, env: dict[str, str] | None = None) -> None
     python(
         venv,
         "-c",
-        "import torch; import spconv.pytorch as spconv; print('[setup] spconv import OK:', getattr(spconv, '__version__', 'unknown'))",
+        "import warnings; warnings.filterwarnings('ignore', category=FutureWarning, module=r'spconv(\\.|$).*'); import torch; import spconv.pytorch as spconv; print('[setup] spconv import OK:', getattr(spconv, '__version__', 'unknown'))",
         env=env,
     )
 
@@ -569,8 +569,17 @@ def smoke_check_torch_stack(venv: Path, torch_packages: list[str], *, env: dict[
     python(venv, "-c", code, env=env)
 
 
+def candidate_prebuilt_spconv_tags(cuda_tag: str) -> list[str]:
+    if is_windows() and sys.version_info >= (3, 12):
+        # PyPI publishes spconv-cu118 cp312-win_amd64 wheels, but not
+        # spconv-cu120 cp312-win_amd64 wheels. Do not try tags that cannot
+        # satisfy the current Windows embedded Python version.
+        return ["cu118"]
+    return [tag for tag in (cuda_tag, *KNOWN_PREBUILT_SPCONV_CUDA_TAGS) if tag in KNOWN_PREBUILT_SPCONV_CUDA_TAGS]
+
+
 def install_prebuilt_spconv(venv: Path, cuda_tag: str) -> None:
-    fallbacks = [tag for tag in (cuda_tag, *KNOWN_PREBUILT_SPCONV_CUDA_TAGS) if tag in KNOWN_PREBUILT_SPCONV_CUDA_TAGS]
+    fallbacks = candidate_prebuilt_spconv_tags(cuda_tag)
     tried: list[str] = []
     last_error: subprocess.CalledProcessError | None = None
     for tag in fallbacks:

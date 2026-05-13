@@ -131,6 +131,8 @@ Windows setup is wheel-first for dependencies that upstream publishes as wheels.
 
 When verifying `spconv`, setup imports `torch` first so Windows registers PyTorch/CUDA DLL directories before `spconv` loads its native modules. This mirrors the runtime generator import order.
 
+On Windows Python 3.12, setup only tries `spconv-cu118` because upstream currently publishes `cp312-win_amd64` wheels for `spconv-cu118` but not for `spconv-cu120`. Setup and runtime also suppress upstream `spconv` `FutureWarning` messages that can otherwise break smoke checks in environments that treat warnings as errors.
+
 ## Vendoring
 
 The repository starts with a placeholder `vendor/.gitkeep`. Modly setup populates pure-Python vendor sources automatically. For development, you can also run the vendoring step manually:

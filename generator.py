@@ -19,6 +19,7 @@ import sys
 import threading
 import time
 import uuid
+import warnings
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -123,6 +124,7 @@ class TrellisTextGenerator(BaseGenerator):
     def _setup_env(self) -> None:
         os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         os.environ.setdefault("SPARSE_CONV_BACKEND", "spconv")
+        warnings.filterwarnings("ignore", category=FutureWarning, module=r"spconv(\.|$).*")
 
         if importlib.util.find_spec("xformers") is not None:
             os.environ.setdefault("ATTN_BACKEND", "xformers")

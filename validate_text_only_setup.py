@@ -69,7 +69,12 @@ def validate_setup_exclusions() -> None:
     require("resolve_attention_backends" in setup, "setup.py must resolve attention backend pins from selected torch")
     require("no_deps=backend_name == \"xformers\"" in setup, "setup.py must install xformers without dependencies so torch is not replaced")
     require("smoke_check_torch_stack" in setup, "setup.py must verify torch/torchvision versions after dependency installs")
+    require("candidate_prebuilt_spconv_tags" in setup and "return [\"cu118\"]" in setup, "setup.py must avoid unavailable spconv-cu120 cp312 Windows wheels")
+    require("warnings.filterwarnings('ignore', category=FutureWarning" in setup, "spconv smoke check must suppress upstream FutureWarning noise")
     require("import torch; import spconv.pytorch as spconv" in setup, "spconv smoke check must import torch before spconv for Windows DLL paths")
+
+    generator = (ROOT / "generator.py").read_text(encoding="utf-8")
+    require("warnings.filterwarnings" in generator and "spconv" in generator, "generator must suppress spconv FutureWarnings at runtime")
     require(
         setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
         "setup.py must install wheel-first dependencies before Windows native compiler preflight",
@@ -106,6 +111,7 @@ def validate_readme() -> None:
     require("build_vendor.py" in readme and "trellis.pipelines.TrellisTextTo3DPipeline" in readme, "README must document automatic vendor population")
     require("CUDA Toolkit 12.8" in readme and "spconv-cu128" in readme, "README must document Windows CUDA Toolkit and spconv-cu128 caveat")
     require("xformers" in readme and "cannot silently replace" in readme, "README must document pinned xformers/torch behavior")
+    require("spconv-cu118" in readme and "FutureWarning" in readme, "README must document Windows spconv cp312/FutureWarning behavior")
     require("rembg" in readme and "TrellisTextTo3DPipeline" in readme, "README must document text-only TRELLIS pipeline export patching")
     require("open3d" in readme and "prompt-to-mesh" in readme, "README must document optional open3d vendoring patch")
     require(".trellis-text-only-v4" in readme, "README must document versioned vendor marker")
