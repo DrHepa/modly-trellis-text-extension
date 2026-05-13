@@ -127,6 +127,8 @@ For current PyTorch `cu128` installs, this usually means installing the **CUDA T
 
 Windows setup is wheel-first for dependencies that upstream publishes as wheels. It installs PyTorch, runtime Python dependencies, `spconv` prebuilt wheels, and `xformers` before preparing the native compiler environment for source-built TRELLIS postprocessing extensions. The setup uses only known upstream `spconv` prebuilt CUDA wheel tags (`cu120`, `cu118`) instead of trying every PyTorch CUDA tag. This avoids misleading `spconv-cu128` errors on Windows while still allowing the prebuilt fallback path that upstream currently publishes.
 
+`xformers` is pinned to the selected PyTorch version and installed without dependencies so pip cannot silently replace the `torch`/`torchvision` pair. Setup validates the Torch stack after installing PyTorch and again after installing the attention backend.
+
 When verifying `spconv`, setup imports `torch` first so Windows registers PyTorch/CUDA DLL directories before `spconv` loads its native modules. This mirrors the runtime generator import order.
 
 ## Vendoring

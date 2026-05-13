@@ -66,6 +66,11 @@ CUMM_MAX_SUPPORTED_SM = 90
 CUMM_MAX_SUPPORTED_ARCH = "9.0"
 CUMM_FORWARD_COMPAT_ARCH = "9.0+PTX"
 KNOWN_PREBUILT_SPCONV_CUDA_TAGS = ("cu120", "cu118")
+XFORMERS_BY_TORCH_VERSION = {
+    "2.7.0": "xformers==0.0.30",
+    "2.6.0": "xformers==0.0.29.post3",
+    "2.5.1": "xformers==0.0.28.post3",
+}
 
 
 @dataclass(frozen=True)
@@ -126,6 +131,27 @@ def select_torch(gpu_sm: int, cuda_version: int) -> tuple[list[str], str, str]:
     if gpu_sm == 0 or gpu_sm >= 70:
         return ["torch==2.6.0", "torchvision==0.21.0"], "https://download.pytorch.org/whl/cu124", "cu124"
     return ["torch==2.5.1", "torchvision==0.20.1"], "https://download.pytorch.org/whl/cu118", "cu118"
+
+
+def package_version(packages: list[str], name: str) -> str:
+    prefix = f"{name}=="
+    for package in packages:
+        if package.startswith(prefix):
+            return package[len(prefix):]
+    raise RuntimeError(f"Internal setup error: missing pinned package '{name}' in {packages}")
+
+
+def resolve_attention_backends(plan: PlatformInstallPlan, torch_packages: list[str]) -> tuple[tuple[str, str], ...]:
+    torch_version = package_version(torch_packages, "torch")
+    resolved: list[tuple[str, str]] = []
+    for backend_name, requirement in plan.attention_backends:
+        if backend_name == "xformers" and requirement == "xformers":
+            try:
+                requirement = XFORMERS_BY_TORCH_VERSION[torch_version]
+            except KeyError as exc:
+                raise RuntimeError(f"No pinned xformers version is known for torch=={torch_version}") from exc
+        resolved.append((backend_name, requirement))
+    return tuple(resolved)
 
 
 def venv_bin(venv: Path, name: str) -> Path:
@@ -462,10 +488,12 @@ def ensure_vendor_sources(ext_dir: Path, venv: Path) -> None:
         raise RuntimeError("vendor/ was populated but required runtime sources are still missing: " + ", ".join(missing))
 
 
-def pip_install(venv: Path, *packages: str, env: dict[str, str] | None = None, no_build_isolation: bool = False) -> None:
+def pip_install(venv: Path, *packages: str, env: dict[str, str] | None = None, no_build_isolation: bool = False, no_deps: bool = False) -> None:
     cmd = ["install"]
     if no_build_isolation:
         cmd.append("--no-build-isolation")
+    if no_deps:
+        cmd.append("--no-deps")
     cmd.extend(packages)
     pip(venv, *cmd, env=env)
 
@@ -529,6 +557,18 @@ def smoke_check_spconv(venv: Path, *, env: dict[str, str] | None = None) -> None
     )
 
 
+def smoke_check_torch_stack(venv: Path, torch_packages: list[str], *, env: dict[str, str] | None = None) -> None:
+    expected_torch = package_version(torch_packages, "torch")
+    expected_torchvision = package_version(torch_packages, "torchvision")
+    code = (
+        "import torch, torchvision; "
+        f"assert torch.__version__.split('+')[0] == '{expected_torch}', torch.__version__; "
+        f"assert torchvision.__version__.split('+')[0] == '{expected_torchvision}', torchvision.__version__; "
+        "print('[setup] torch stack OK:', torch.__version__, torchvision.__version__)"
+    )
+    python(venv, "-c", code, env=env)
+
+
 def install_prebuilt_spconv(venv: Path, cuda_tag: str) -> None:
     fallbacks = [tag for tag in (cuda_tag, *KNOWN_PREBUILT_SPCONV_CUDA_TAGS) if tag in KNOWN_PREBUILT_SPCONV_CUDA_TAGS]
     tried: list[str] = []
@@ -573,11 +613,16 @@ def install_spconv(venv: Path, cuda_tag: str, gpu_sm: int, build_env: dict[str, 
         install_prebuilt_spconv(venv, cuda_tag)
 
 
-def install_attention_backend(venv: Path, plan: PlatformInstallPlan) -> str:
+def install_attention_backend(venv: Path, plan: PlatformInstallPlan, torch_packages: list[str]) -> str:
     failures: list[str] = []
-    for backend_name, requirement in plan.attention_backends:
+    for backend_name, requirement in resolve_attention_backends(plan, torch_packages):
         try:
-            pip_install(venv, requirement, no_build_isolation=attention_backend_needs_no_build_isolation(backend_name, requirement))
+            pip_install(
+                venv,
+                requirement,
+                no_build_isolation=attention_backend_needs_no_build_isolation(backend_name, requirement),
+                no_deps=backend_name == "xformers",
+            )
             return backend_name
         except subprocess.CalledProcessError as exc:
             failures.append(str(native_install_error(backend_name, requirement, exc)))
@@ -604,7 +649,7 @@ def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
         "torch_index": torch_index,
         "cuda_tag": cuda_tag,
         "spconv_strategy": "source-with-cumm-cuda-discovery-patch" if is_linux_arm64() else f"prebuilt-known-tags:{','.join(KNOWN_PREBUILT_SPCONV_CUDA_TAGS)}",
-        "attention_backends": [backend for backend, _ in plan.attention_backends],
+        "attention_backends": [f"{backend}:{requirement}" for backend, requirement in resolve_attention_backends(plan, torch_pkgs)],
         "native_from_git": {
             "nvdiffrast": f"{NVDIFFRAST_SOURCE_REPO}@{NVDIFFRAST_SOURCE_REF}",
             "diff_gaussian_rasterization": f"{MIP_SPLATTING_SOURCE_REPO}@{MIP_SPLATTING_SOURCE_REF}:{MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY}",
@@ -636,9 +681,11 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
 
     torch_pkgs, torch_index, cuda_tag = select_torch(gpu_sm, cuda_version)
     pip(venv, "install", *torch_pkgs, "--index-url", torch_index)
+    smoke_check_torch_stack(venv, torch_pkgs)
     install_python_runtime_dependencies(venv)
     install_spconv(venv, cuda_tag, gpu_sm, build_env)
-    chosen_attention_backend = install_attention_backend(venv, plan)
+    chosen_attention_backend = install_attention_backend(venv, plan, torch_pkgs)
+    smoke_check_torch_stack(venv, torch_pkgs)
     print(f"[setup] Selected sparse attention backend: {chosen_attention_backend}")
 
     native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
