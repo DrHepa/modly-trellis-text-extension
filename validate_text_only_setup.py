@@ -155,6 +155,7 @@ def validate_native_wheels_tooling() -> None:
     require("Set-StrictMode -Version Latest" in build_nvdiffrast, "build-nvdiffrast.ps1 must enable strict mode")
     require("$ErrorActionPreference = 'Stop'" in build_nvdiffrast, "build-nvdiffrast.ps1 must stop on errors")
     require("Invoke-Expression" not in build_nvdiffrast, "build-nvdiffrast.ps1 must not construct commands via Invoke-Expression")
+    require("include\\cccl" in build_nvdiffrast and "$env:INCLUDE" in build_nvdiffrast, "build-nvdiffrast.ps1 must add Conda CUDA CCCL headers to INCLUDE")
     require("pip wheel" in build_nvdiffrast and "--no-build-isolation" in build_nvdiffrast, "build-nvdiffrast.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/NVlabs/nvdiffrast.git" in build_nvdiffrast and "v0.4.0" in build_nvdiffrast, "build-nvdiffrast.ps1 must pin nvdiffrast source")
 
@@ -162,6 +163,7 @@ def validate_native_wheels_tooling() -> None:
     require("Set-StrictMode -Version Latest" in build_diff, "build-diff-gaussian.ps1 must enable strict mode")
     require("$ErrorActionPreference = 'Stop'" in build_diff, "build-diff-gaussian.ps1 must stop on errors")
     require("Invoke-Expression" not in build_diff, "build-diff-gaussian.ps1 must not construct commands via Invoke-Expression")
+    require("include\\cccl" in build_diff and "$env:INCLUDE" in build_diff, "build-diff-gaussian.ps1 must add Conda CUDA CCCL headers to INCLUDE")
     require("pip wheel" in build_diff and "--no-build-isolation" in build_diff, "build-diff-gaussian.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/autonomousvision/mip-splatting.git" in build_diff and "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9" in build_diff, "build-diff-gaussian.ps1 must pin mip-splatting source")
     require("submodules/diff-gaussian-rasterization" in build_diff, "build-diff-gaussian.ps1 must build the diff-gaussian subdirectory")

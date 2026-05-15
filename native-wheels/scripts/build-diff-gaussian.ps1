@@ -75,6 +75,12 @@ $env:CUDACXX = (Join-Path $CudaRoot 'bin\nvcc.exe')
 $env:TORCH_CUDA_ARCH_LIST = $TorchCudaArchList
 $env:DISTUTILS_USE_SDK = '1'
 
+$ccclInclude = Join-Path $CudaRoot 'include\cccl'
+if (Test-Path $ccclInclude) {
+    $env:INCLUDE = "$ccclInclude;$env:INCLUDE"
+    Write-Host "[native-wheels] Added CUDA CCCL include path: $ccclInclude"
+}
+
 Invoke-Python -Arguments @('-m', 'venv', $venvDir)
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 
