@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag for uploaded native wheels
         required: true
-        default: native-wheels-torch270-cu128-v1
+        default: native-wheels-torch270-cu128-v2
       upload_release:
         description: Upload wheels and license files to the release after a successful build
         required: true

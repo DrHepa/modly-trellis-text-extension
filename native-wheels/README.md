@@ -22,7 +22,13 @@ Minimum supported matrix for this tooling:
 
 Expected release tag:
 
-- `native-wheels-torch270-cu128-v1`
+- `native-wheels-torch270-cu128-v2`
+
+Compiled CUDA architecture targets:
+
+- `sm_61`, `sm_75`, `sm_80`, `sm_86`, `sm_89`, plus `sm_90+PTX`
+
+The v2 release expands architecture coverage after v1 exposed `cudaErrorNoKernelImageForDevice` / CUDA error 209 on some Windows laptop GPUs when `nvdiffrast` initialized its rasterizer kernels.
 
 Expected GitHub repository:
 
@@ -88,7 +94,7 @@ The scripts:
 
 ## Uploading GitHub Release assets
 
-1. Create or update the release tag `native-wheels-torch270-cu128-v1`.
+1. Create or update the release tag `native-wheels-torch270-cu128-v2`.
 2. Upload the generated `.whl` files as release assets.
 3. Keep filenames unchanged.
 4. Verify the assets match the ABI/platform expected by `setup.py`:
@@ -126,7 +132,7 @@ The repository also provides a manual workflow:
 Run it from GitHub Actions or with `gh` after the workflow has been committed and pushed:
 
 ```powershell
-gh workflow run build-native-windows-wheels.yml -f release_tag=native-wheels-torch270-cu128-v1 -f upload_release=true
+gh workflow run build-native-windows-wheels.yml -f release_tag=native-wheels-torch270-cu128-v2 -f upload_release=true
 ```
 
 The workflow builds `cp311` and `cp312` wheels on `windows-2022`, installs CUDA Toolkit 12.8 build components plus CUDA dev libraries (`cuBLAS`, `cuSPARSE`, `cuSOLVER`, `cuRAND`, `cuFFT`, and `cuda-cccl_win-64`) into a temporary Conda prefix from the NVIDIA Conda channel, runs the smoke test, and optionally uploads the wheels plus license files to the release tag.

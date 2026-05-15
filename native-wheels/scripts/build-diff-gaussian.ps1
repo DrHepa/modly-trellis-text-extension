@@ -7,7 +7,7 @@ param(
     [string]$TorchVisionVersion = "0.22.0",
     [string]$TorchIndexUrl = "https://download.pytorch.org/whl/cu128",
     [string]$CudaRoot = $env:CUDA_PATH,
-    [string]$TorchCudaArchList = "8.6;8.9;9.0+PTX",
+    [string]$TorchCudaArchList = "6.1;7.5;8.0;8.6;8.9;9.0+PTX",
     [switch]$Clean
 )
 
@@ -130,6 +130,7 @@ $env:CUDA_PATH = $CudaRoot
 $env:CUDACXX = (Join-Path $CudaRoot 'bin\nvcc.exe')
 $env:TORCH_CUDA_ARCH_LIST = $TorchCudaArchList
 $env:DISTUTILS_USE_SDK = '1'
+Write-Host "[native-wheels] TORCH_CUDA_ARCH_LIST=$env:TORCH_CUDA_ARCH_LIST"
 
 $ccclInclude = Join-Path $CudaRoot 'include\cccl'
 if (Test-Path $ccclInclude) {

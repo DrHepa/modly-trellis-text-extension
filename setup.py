@@ -31,7 +31,7 @@ MIP_SPLATTING_SOURCE_REPO = "https://github.com/autonomousvision/mip-splatting.g
 MIP_SPLATTING_SOURCE_REF = "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9"
 MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY = "submodules/diff-gaussian-rasterization"
 NATIVE_WHEEL_RELEASE_REPO = "DrHepa/modly-trellis-text-extension"
-NATIVE_WHEEL_RELEASE_TAG = "native-wheels-torch270-cu128-v1"
+NATIVE_WHEEL_RELEASE_TAG = "native-wheels-torch270-cu128-v2"
 NATIVE_WHEEL_SUPPORTED_CUDA_TAG = "cu128"
 NATIVE_WHEEL_SUPPORTED_TORCH = "2.7.0"
 NATIVE_WHEEL_SUPPORTED_TORCHVISION = "0.22.0"
@@ -514,12 +514,21 @@ def ensure_vendor_sources(ext_dir: Path, venv: Path) -> None:
         raise RuntimeError("vendor/ was populated but required runtime sources are still missing: " + ", ".join(missing))
 
 
-def pip_install(venv: Path, *packages: str, env: dict[str, str] | None = None, no_build_isolation: bool = False, no_deps: bool = False) -> None:
+def pip_install(
+    venv: Path,
+    *packages: str,
+    env: dict[str, str] | None = None,
+    no_build_isolation: bool = False,
+    no_deps: bool = False,
+    force_reinstall: bool = False,
+) -> None:
     cmd = ["install"]
     if no_build_isolation:
         cmd.append("--no-build-isolation")
     if no_deps:
         cmd.append("--no-deps")
+    if force_reinstall:
+        cmd.append("--force-reinstall")
     cmd.extend(packages)
     pip(venv, *cmd, env=env)
 
@@ -731,7 +740,7 @@ def try_install_prebuilt_native_wheels(venv: Path, torch_packages: list[str], cu
     urls = native_wheel_urls(abi_tag)
     print(f"[setup] Trying Windows native wheels from release tag {NATIVE_WHEEL_RELEASE_TAG}: {json.dumps(urls, indent=2)}")
     try:
-        pip_install(venv, *urls.values(), no_deps=True)
+        pip_install(venv, *urls.values(), no_deps=True, force_reinstall=True)
         smoke_check_native_wheels(venv)
         print("[setup] Installed native TRELLIS wheels successfully; CUDA Toolkit/MSVC source build step is not required.")
         return True
