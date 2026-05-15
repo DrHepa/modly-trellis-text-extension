@@ -27,7 +27,7 @@ This extension requires an NVIDIA CUDA runtime. CPU-only execution, macOS, and n
 | --- | --- | --- |
 | Linux x86_64 + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, prebuilt `spconv-*` when available, and `xformers` with `flash-attn` fallback. |
 | Linux ARM64/aarch64 + NVIDIA CUDA | Supported | Builds `cumm`/`spconv` from source and applies an ARM64 CUDA discovery hotfix before building `spconv`. |
-| Windows + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, `xformers`, prebuilt `spconv-*` packages, and source builds for native TRELLIS postprocessing extensions. Requires CUDA Toolkit and Visual Studio Build Tools 2022. |
+| Windows + NVIDIA CUDA | Supported | Uses PyTorch CUDA wheels, `xformers`, prebuilt `spconv-*` packages, and wheel-first installation for TRELLIS native postprocessing extensions. Falls back to source builds when native release wheels are unavailable or incompatible. |
 | macOS | Not supported | The TRELLIS text runtime depends on CUDA and calls `.cuda()`. |
 
 ## Models
@@ -124,6 +124,10 @@ Windows installation compiles native CUDA extensions such as `diff_gaussian_rast
 If Windows setup fails while compiling a native extension, verify that **Visual Studio Build Tools 2022** is installed with the **Desktop development with C++** workload, including MSVC v143 and a Windows SDK. Also verify that a matching NVIDIA CUDA Toolkit is installed.
 
 For current PyTorch `cu128` installs, this usually means installing the **CUDA Toolkit 12.8** from NVIDIA, not just the GPU driver. If CUDA is installed in a non-standard location, set `MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT` to the Toolkit root before installing the extension.
+
+Before source-building these TRELLIS-native extensions on Windows, setup now tries extension-owned GitHub Release wheels for `nvdiffrast` and `diff_gaussian_rasterization`. The default release channel targets `cp311`/`cp312` on `win_amd64` for `torch==2.7.0`, `torchvision==0.22.0`, and `cu128`. You can opt out with `MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS=1` or override the release base URL with `MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL`.
+
+The wheel build/upload helper docs live under `native-wheels/`, including the full upstream license texts required for redistribution review. This matters because both native packages carry non-commercial / research-oriented licensing constraints.
 
 Windows setup is wheel-first for dependencies that upstream publishes as wheels. It installs PyTorch, runtime Python dependencies, `spconv` prebuilt wheels, and `xformers` before preparing the native compiler environment for source-built TRELLIS postprocessing extensions. The setup uses only known upstream `spconv` prebuilt CUDA wheel tags (`cu120`, `cu118`) instead of trying every PyTorch CUDA tag. This avoids misleading `spconv-cu128` errors on Windows while still allowing the prebuilt fallback path that upstream currently publishes.
 

@@ -69,6 +69,11 @@ def validate_setup_exclusions() -> None:
     require("resolve_attention_backends" in setup, "setup.py must resolve attention backend pins from selected torch")
     require("no_deps=backend_name == \"xformers\"" in setup, "setup.py must install xformers without dependencies so torch is not replaced")
     require("smoke_check_torch_stack" in setup, "setup.py must verify torch/torchvision versions after dependency installs")
+    require("try_install_prebuilt_native_wheels" in setup, "setup.py must attempt prebuilt Windows native wheels before source builds")
+    require("MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS" in setup, "setup.py must support disabling prebuilt native wheels")
+    require("MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL" in setup, "setup.py must support overriding the native wheel release base URL")
+    require("smoke_check_native_wheels" in setup, "setup.py must smoke-check imported native wheels")
+    require("native-wheels-torch270-cu128-v1" in setup, "setup.py must target a stable native wheel release tag")
     require("candidate_prebuilt_spconv_tags" in setup and "return [\"cu118\"]" in setup, "setup.py must avoid unavailable spconv-cu120 cp312 Windows wheels")
     require("warnings.filterwarnings('ignore', category=FutureWarning" in setup, "spconv smoke check must suppress upstream FutureWarning noise")
     require("import torch; import spconv.pytorch as spconv" in setup, "spconv smoke check must import torch before spconv for Windows DLL paths")
@@ -78,6 +83,10 @@ def validate_setup_exclusions() -> None:
     require(
         setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
         "setup.py must install wheel-first dependencies before Windows native compiler preflight",
+    )
+    require(
+        setup.index("try_install_prebuilt_native_wheels(venv, torch_pkgs, cuda_tag)") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
+        "setup.py must try native wheels before resolving source-build CUDA/MSVC env",
     )
 
 
@@ -117,6 +126,60 @@ def validate_readme() -> None:
     require(".trellis-text-only-v4" in readme, "README must document versioned vendor marker")
     require("pipeline.text-localized.json" in readme and "config_file" in readme, "README must document localized pipeline config support")
     require("kaolin" in readme, "README must document kaolin removal from vendored FlexiCubes")
+    require("MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS" in readme, "README must document native wheel opt-out")
+    require("native-wheels/" in readme, "README must mention native wheel tooling docs")
+
+
+def validate_native_wheels_tooling() -> None:
+    required_files = [
+        ROOT / "native-wheels" / "README.md",
+        ROOT / "native-wheels" / "scripts" / "build-nvdiffrast.ps1",
+        ROOT / "native-wheels" / "scripts" / "build-diff-gaussian.ps1",
+        ROOT / "native-wheels" / "scripts" / "smoke-test.ps1",
+        ROOT / "native-wheels" / "licenses" / "nvdiffrast-LICENSE.txt",
+        ROOT / "native-wheels" / "licenses" / "diff-gaussian-rasterization-LICENSE.md",
+        ROOT / ".github" / "workflows" / "build-native-windows-wheels.yml",
+    ]
+    for path in required_files:
+        require(path.exists(), f"Missing required native wheel tooling file: {path.relative_to(ROOT)}")
+
+    native_readme = (ROOT / "native-wheels" / "README.md").read_text(encoding="utf-8")
+    require("CUDA Toolkit 12.8" in native_readme, "native-wheels README must require CUDA Toolkit 12.8")
+    require("Visual Studio Build Tools 2022" in native_readme, "native-wheels README must document VS Build Tools 2022")
+    require("native-wheels-torch270-cu128-v1" in native_readme, "native-wheels README must document the release tag")
+    require("non-commercial" in native_readme and "research" in native_readme, "native-wheels README must document licensing limits")
+    require("smoke-test.ps1" in native_readme, "native-wheels README must document smoke-test.ps1")
+    require("build-native-windows-wheels.yml" in native_readme, "native-wheels README must document the GitHub Actions workflow")
+
+    build_nvdiffrast = (ROOT / "native-wheels" / "scripts" / "build-nvdiffrast.ps1").read_text(encoding="utf-8")
+    require("Set-StrictMode -Version Latest" in build_nvdiffrast, "build-nvdiffrast.ps1 must enable strict mode")
+    require("$ErrorActionPreference = 'Stop'" in build_nvdiffrast, "build-nvdiffrast.ps1 must stop on errors")
+    require("pip wheel" in build_nvdiffrast and "--no-build-isolation" in build_nvdiffrast, "build-nvdiffrast.ps1 must build wheels via pip wheel --no-build-isolation")
+    require("https://github.com/NVlabs/nvdiffrast.git" in build_nvdiffrast and "v0.4.0" in build_nvdiffrast, "build-nvdiffrast.ps1 must pin nvdiffrast source")
+
+    build_diff = (ROOT / "native-wheels" / "scripts" / "build-diff-gaussian.ps1").read_text(encoding="utf-8")
+    require("Set-StrictMode -Version Latest" in build_diff, "build-diff-gaussian.ps1 must enable strict mode")
+    require("$ErrorActionPreference = 'Stop'" in build_diff, "build-diff-gaussian.ps1 must stop on errors")
+    require("pip wheel" in build_diff and "--no-build-isolation" in build_diff, "build-diff-gaussian.ps1 must build wheels via pip wheel --no-build-isolation")
+    require("https://github.com/autonomousvision/mip-splatting.git" in build_diff and "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9" in build_diff, "build-diff-gaussian.ps1 must pin mip-splatting source")
+    require("submodules/diff-gaussian-rasterization" in build_diff, "build-diff-gaussian.ps1 must build the diff-gaussian subdirectory")
+    require("submodule update --init --recursive" in build_diff, "build-diff-gaussian.ps1 must initialize recursive submodules")
+
+    smoke_test = (ROOT / "native-wheels" / "scripts" / "smoke-test.ps1").read_text(encoding="utf-8")
+    require("import torch; import nvdiffrast.torch; import diff_gaussian_rasterization" in smoke_test, "smoke-test.ps1 must validate torch and native imports")
+
+    nvdiffrast_license = (ROOT / "native-wheels" / "licenses" / "nvdiffrast-LICENSE.txt").read_text(encoding="utf-8")
+    require("Nvidia Source Code License" in nvdiffrast_license, "nvdiffrast license text must be complete")
+    diff_license = (ROOT / "native-wheels" / "licenses" / "diff-gaussian-rasterization-LICENSE.md").read_text(encoding="utf-8")
+    require("Gaussian-Splatting License" in diff_license, "diff-gaussian license text must be complete")
+
+    workflow = (ROOT / ".github" / "workflows" / "build-native-windows-wheels.yml").read_text(encoding="utf-8")
+    require("windows-2022" in workflow, "native wheel workflow must build on Windows")
+    require("Jimver/cuda-toolkit@v0.2.35" in workflow and "12.8.0" in workflow, "native wheel workflow must install CUDA Toolkit 12.8")
+    require("ilammy/msvc-dev-cmd@v1" in workflow, "native wheel workflow must prepare MSVC developer shell")
+    require("build-nvdiffrast.ps1" in workflow and "build-diff-gaussian.ps1" in workflow, "native wheel workflow must run both build scripts")
+    require("smoke-test.ps1" in workflow, "native wheel workflow must smoke-test built wheels")
+    require("gh release upload" in workflow, "native wheel workflow must support release upload")
 
 
 def main() -> None:
@@ -126,6 +189,7 @@ def main() -> None:
     validate_build_vendor_text_only_patch()
     validate_vendor_placeholder()
     validate_readme()
+    validate_native_wheels_tooling()
     print("Static text-only validation passed.")
 
 

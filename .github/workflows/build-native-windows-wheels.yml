@@ -1,0 +1,140 @@
+name: Build native Windows wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag for uploaded native wheels
+        required: true
+        default: native-wheels-torch270-cu128-v1
+      upload_release:
+        description: Upload wheels and license files to the release after a successful build
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.python-abi }} Windows wheels
+    runs-on: windows-2022
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: '3.11'
+            python-abi: cp311
+          - python-version: '3.12'
+            python-abi: cp312
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+
+      - name: Set up MSVC developer shell
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install CUDA Toolkit 12.8
+        id: cuda-toolkit
+        uses: Jimver/cuda-toolkit@v0.2.35
+        with:
+          cuda: '12.8.0'
+          method: network
+          sub-packages: '["nvcc", "cudart", "cudart_dev", "cccl", "visual_studio_integration"]'
+          log-file-suffix: '${{ matrix.python-abi }}.txt'
+
+      - name: Verify toolchain
+        shell: pwsh
+        run: |
+          python --version
+          where.exe cl
+          cl 2>&1 | Select-Object -First 5
+          nvcc --version
+          Write-Host "CUDA_PATH=$env:CUDA_PATH"
+
+      - name: Build nvdiffrast wheel
+        shell: pwsh
+        run: |
+          $wheelDir = Join-Path $PWD 'native-wheels\wheelhouse\${{ matrix.python-abi }}'
+          .\native-wheels\scripts\build-nvdiffrast.ps1 `
+            -Python 'python' `
+            -OutDir $wheelDir `
+            -WorkDir ".\native-wheels\work\nvdiffrast-${{ matrix.python-abi }}" `
+            -CudaRoot $env:CUDA_PATH `
+            -Clean
+
+      - name: Build diff_gaussian_rasterization wheel
+        shell: pwsh
+        run: |
+          $wheelDir = Join-Path $PWD 'native-wheels\wheelhouse\${{ matrix.python-abi }}'
+          .\native-wheels\scripts\build-diff-gaussian.ps1 `
+            -Python 'python' `
+            -OutDir $wheelDir `
+            -WorkDir ".\native-wheels\work\diff-gaussian-${{ matrix.python-abi }}" `
+            -CudaRoot $env:CUDA_PATH `
+            -Clean
+
+      - name: Smoke-test built wheels
+        shell: pwsh
+        run: |
+          $wheelDir = Join-Path $PWD 'native-wheels\wheelhouse\${{ matrix.python-abi }}'
+          .\native-wheels\scripts\smoke-test.ps1 -Python 'python' -WheelDir $wheelDir
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-wheels-${{ matrix.python-abi }}
+          path: native-wheels/wheelhouse/${{ matrix.python-abi }}/*.whl
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.upload_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: native-windows-wheels-*
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "Native Windows wheels for TRELLIS text (${RELEASE_TAG})" \
+              --notes "Prebuilt Windows wheels for nvdiffrast and diff_gaussian_rasterization targeting cp311/cp312, torch 2.7.0, torchvision 0.22.0, and CUDA 12.8. Upstream native components retain their original non-commercial / research-oriented licenses."
+          fi
+
+      - name: Upload wheels and licenses to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          gh release upload "$RELEASE_TAG" dist/*.whl native-wheels/licenses/nvdiffrast-LICENSE.txt native-wheels/licenses/diff-gaussian-rasterization-LICENSE.md --clobber

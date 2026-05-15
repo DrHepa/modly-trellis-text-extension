@@ -11,8 +11,10 @@ from __future__ import annotations
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
+import sysconfig
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +30,21 @@ NVDIFFRAST_SOURCE_REF = "v0.4.0"
 MIP_SPLATTING_SOURCE_REPO = "https://github.com/autonomousvision/mip-splatting.git"
 MIP_SPLATTING_SOURCE_REF = "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9"
 MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY = "submodules/diff-gaussian-rasterization"
+NATIVE_WHEEL_RELEASE_REPO = "DrHepa/modly-trellis-text-extension"
+NATIVE_WHEEL_RELEASE_TAG = "native-wheels-torch270-cu128-v1"
+NATIVE_WHEEL_SUPPORTED_CUDA_TAG = "cu128"
+NATIVE_WHEEL_SUPPORTED_TORCH = "2.7.0"
+NATIVE_WHEEL_SUPPORTED_TORCHVISION = "0.22.0"
+NATIVE_WHEEL_FILENAMES = {
+    "nvdiffrast": {
+        "filename": "nvdiffrast-0.4.0-{abi}-{abi}-win_amd64.whl",
+        "import": "nvdiffrast.torch",
+    },
+    "diff_gaussian_rasterization": {
+        "filename": "diff_gaussian_rasterization-0.0.0-{abi}-{abi}-win_amd64.whl",
+        "import": "diff_gaussian_rasterization",
+    },
+}
 VENDOR_REQUIRED_PATHS = (
     Path("vendor") / "trellis" / "__init__.py",
     Path("vendor") / "trellis" / "pipelines" / "trellis_text_to_3d.py",
@@ -93,6 +110,15 @@ def machine_arch() -> str:
 
 def platform_label() -> str:
     return f"{platform.system()} {machine_arch()}"
+
+
+def python_abi_tag() -> str | None:
+    abi = f"cp{sys.version_info.major}{sys.version_info.minor}"
+    return abi if abi in {"cp311", "cp312"} else None
+
+
+def wheel_platform_tag() -> str:
+    return sysconfig.get_platform().replace("-", "_").replace(".", "_")
 
 
 def is_linux_arm64() -> bool:
@@ -544,6 +570,15 @@ def uninstall_packages(venv: Path, *packages: str) -> None:
         pip(venv, "uninstall", "-y", *packages)
 
 
+def smoke_check_native_wheels(venv: Path, *, env: dict[str, str] | None = None) -> None:
+    python(
+        venv,
+        "-c",
+        "import torch; import nvdiffrast.torch; import diff_gaussian_rasterization; print('[setup] native wheel imports OK:', torch.__version__)",
+        env=env,
+    )
+
+
 def smoke_check_spconv(venv: Path, *, env: dict[str, str] | None = None) -> None:
     # Import torch first so Windows registers PyTorch/CUDA DLL directories before
     # spconv loads its native extension modules. The runtime generator does the
@@ -648,6 +683,68 @@ def install_python_runtime_dependencies(venv: Path) -> None:
     pip(venv, "install", *PYTHON_RUNTIME_DEPENDENCIES)
 
 
+def native_wheel_base_url() -> str:
+    return os.environ.get(
+        "MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL",
+        f"https://github.com/{NATIVE_WHEEL_RELEASE_REPO}/releases/download/{NATIVE_WHEEL_RELEASE_TAG}",
+    ).rstrip("/")
+
+
+def native_wheel_urls(abi_tag: str) -> dict[str, str]:
+    base_url = native_wheel_base_url()
+    return {
+        package_name: f"{base_url}/{metadata['filename'].format(abi=abi_tag)}"
+        for package_name, metadata in NATIVE_WHEEL_FILENAMES.items()
+    }
+
+
+def try_install_prebuilt_native_wheels(venv: Path, torch_packages: list[str], cuda_tag: str) -> bool:
+    if os.environ.get("MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS") == "1":
+        print("[setup] Prebuilt native wheels disabled by MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS=1; falling back to source builds.")
+        return False
+
+    abi_tag = python_abi_tag()
+    torch_version = package_version(torch_packages, "torch")
+    torchvision_version = package_version(torch_packages, "torchvision")
+    detected_platform = wheel_platform_tag()
+    if not is_windows() or detected_platform != "win_amd64":
+        print(f"[setup] No compatible native wheel strategy for platform={detected_platform}; source build fallback remains active.")
+        return False
+    if abi_tag is None:
+        print(
+            f"[setup] No compatible native wheels for Python ABI {sys.version_info.major}.{sys.version_info.minor}; "
+            "supported ABIs are cp311/cp312. Falling back to source builds."
+        )
+        return False
+    if (
+        cuda_tag != NATIVE_WHEEL_SUPPORTED_CUDA_TAG
+        or torch_version != NATIVE_WHEEL_SUPPORTED_TORCH
+        or torchvision_version != NATIVE_WHEEL_SUPPORTED_TORCHVISION
+    ):
+        print(
+            "[setup] No compatible prebuilt native wheels for "
+            f"abi={abi_tag}, torch=={torch_version}, torchvision=={torchvision_version}, cuda_tag={cuda_tag}. "
+            "Falling back to source builds that require CUDA Toolkit/MSVC on Windows."
+        )
+        return False
+
+    urls = native_wheel_urls(abi_tag)
+    print(f"[setup] Trying Windows native wheels from release tag {NATIVE_WHEEL_RELEASE_TAG}: {json.dumps(urls, indent=2)}")
+    try:
+        pip_install(venv, *urls.values(), no_deps=True)
+        smoke_check_native_wheels(venv)
+        print("[setup] Installed native TRELLIS wheels successfully; CUDA Toolkit/MSVC source build step is not required.")
+        return True
+    except (subprocess.CalledProcessError, RuntimeError) as exc:
+        print(
+            "[setup] Prebuilt native wheel install failed; "
+            "falling back to source builds that require CUDA Toolkit/MSVC on Windows. "
+            f"Cause: {exc}"
+        )
+        uninstall_packages(venv, "nvdiffrast", "diff_gaussian_rasterization", "diff-gaussian-rasterization")
+        return False
+
+
 def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
     torch_pkgs, torch_index, cuda_tag = select_torch(gpu_sm, cuda_version)
     plan = plan_platform_install()
@@ -662,6 +759,17 @@ def describe_install_plan(gpu_sm: int, cuda_version: int) -> dict[str, object]:
         "native_from_git": {
             "nvdiffrast": f"{NVDIFFRAST_SOURCE_REPO}@{NVDIFFRAST_SOURCE_REF}",
             "diff_gaussian_rasterization": f"{MIP_SPLATTING_SOURCE_REPO}@{MIP_SPLATTING_SOURCE_REF}:{MIP_SPLATTING_DIFF_GAUSSIAN_SUBDIRECTORY}",
+        },
+        "native_wheels": {
+            "enabled_by_default": True,
+            "disable_env": "MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS=1",
+            "base_url_env": "MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL",
+            "release_tag": NATIVE_WHEEL_RELEASE_TAG,
+            "supported_platform": "win_amd64",
+            "supported_abis": ["cp311", "cp312"],
+            "supported_torch": NATIVE_WHEEL_SUPPORTED_TORCH,
+            "supported_torchvision": NATIVE_WHEEL_SUPPORTED_TORCHVISION,
+            "supported_cuda_tag": NATIVE_WHEEL_SUPPORTED_CUDA_TAG,
         },
         "excluded": ["TRELLIS.2 image/texturing", "o-voxel", "CuMesh", "DINOv3", "RMBG", "nvdiffrec"],
     }
@@ -696,6 +804,13 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     chosen_attention_backend = install_attention_backend(venv, plan, torch_pkgs)
     smoke_check_torch_stack(venv, torch_pkgs)
     print(f"[setup] Selected sparse attention backend: {chosen_attention_backend}")
+
+    installed_native_wheels = try_install_prebuilt_native_wheels(venv, torch_pkgs, cuda_tag)
+    if installed_native_wheels:
+        print("[setup] Native TRELLIS postprocessing dependencies satisfied by Windows wheels.")
+        print("[setup] Done. Extension venv is ready at:", venv)
+        print("[setup] First runtime load still requires Hugging Face access for microsoft/TRELLIS-text-xlarge and hidden CLIP assets.")
+        return
 
     native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
     if native_diagnostics and native_diagnostics.get("cuda_toolkit_root"):
