@@ -180,6 +180,7 @@ def validate_native_wheels_tooling() -> None:
     require("windows-2022" in workflow, "native wheel workflow must build on Windows")
     require("conda-incubator/setup-miniconda@v4" in workflow and "cuda-12.8.1" in workflow, "native wheel workflow must install CUDA Toolkit 12.8 packages from NVIDIA Conda")
     require("conda create -y -p $cudaEnv" in workflow, "native wheel workflow must install CUDA packages into an explicit prefix")
+    require("libcusparse-dev" in workflow and "libcublas-dev" in workflow, "native wheel workflow must install CUDA dev headers required by PyTorch")
     require("CUDA_HOME=$cudaRoot" in workflow and "CUDA_PATH=$cudaRoot" in workflow, "native wheel workflow must export CUDA_HOME/CUDA_PATH")
     require("ilammy/msvc-dev-cmd@v1" in workflow, "native wheel workflow must prepare MSVC developer shell")
     require("build-nvdiffrast.ps1" in workflow and "build-diff-gaussian.ps1" in workflow, "native wheel workflow must run both build scripts")
