@@ -175,7 +175,8 @@ def validate_native_wheels_tooling() -> None:
 
     workflow = (ROOT / ".github" / "workflows" / "build-native-windows-wheels.yml").read_text(encoding="utf-8")
     require("windows-2022" in workflow, "native wheel workflow must build on Windows")
-    require("Jimver/cuda-toolkit@v0.2.35" in workflow and "12.8.0" in workflow, "native wheel workflow must install CUDA Toolkit 12.8")
+    require("mamba-org/setup-micromamba@v3" in workflow and "cuda-12.8.1" in workflow, "native wheel workflow must install CUDA Toolkit 12.8 packages from NVIDIA Conda")
+    require("CUDA_HOME=$cudaRoot" in workflow and "CUDA_PATH=$cudaRoot" in workflow, "native wheel workflow must export CUDA_HOME/CUDA_PATH")
     require("ilammy/msvc-dev-cmd@v1" in workflow, "native wheel workflow must prepare MSVC developer shell")
     require("build-nvdiffrast.ps1" in workflow and "build-diff-gaussian.ps1" in workflow, "native wheel workflow must run both build scripts")
     require("smoke-test.ps1" in workflow, "native wheel workflow must smoke-test built wheels")

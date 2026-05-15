@@ -41,14 +41,37 @@ jobs:
           python-version: ${{ matrix.python-version }}
           architecture: x64
 
-      - name: Install CUDA Toolkit 12.8
-        id: cuda-toolkit
-        uses: Jimver/cuda-toolkit@v0.2.35
+      - name: Install CUDA Toolkit 12.8 packages
+        uses: mamba-org/setup-micromamba@v3
         with:
-          cuda: '12.8.0'
-          method: network
-          sub-packages: '["nvcc", "cudart", "cudart_dev", "cccl"]'
-          log-file-suffix: '${{ matrix.python-abi }}.txt'
+          environment-name: cuda-build
+          init-shell: powershell
+          create-args: >-
+            -c nvidia/label/cuda-12.8.1
+            -c nvidia
+            cuda-nvcc
+            cuda-cudart-dev
+            cuda-cccl
+          cache-environment: true
+          cache-downloads: true
+
+      - name: Export CUDA environment
+        shell: pwsh
+        run: |
+          if (-not $env:CONDA_PREFIX) {
+            throw 'CONDA_PREFIX was not set by setup-micromamba.'
+          }
+          $cudaRoot = Join-Path $env:CONDA_PREFIX 'Library'
+          $nvcc = Join-Path $cudaRoot 'bin\nvcc.exe'
+          if (-not (Test-Path $nvcc)) {
+            throw "nvcc.exe not found at $nvcc"
+          }
+          "CUDA_HOME=$cudaRoot" >> $env:GITHUB_ENV
+          "CUDA_PATH=$cudaRoot" >> $env:GITHUB_ENV
+          "CUDACXX=$nvcc" >> $env:GITHUB_ENV
+          "$cudaRoot\bin" >> $env:GITHUB_PATH
+          Write-Host "CUDA root: $cudaRoot"
+          & $nvcc --version
 
       - name: Set up MSVC developer shell
         uses: ilammy/msvc-dev-cmd@v1
