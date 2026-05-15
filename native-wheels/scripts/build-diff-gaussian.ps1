@@ -87,6 +87,26 @@ function Ensure-CudaCcclHeaders {
     Write-Host "[native-wheels] Mirrored CUDA CCCL nv headers from $sourceNvInclude to: $cudaNvInclude"
 }
 
+function Ensure-CudaWindowsLibLayout {
+    param([Parameter(Mandatory = $true)][string]$CudaRoot)
+
+    $cudaLib = Join-Path $CudaRoot 'lib'
+    $cudaLibX64 = Join-Path $cudaLib 'x64'
+    Ensure-Directory -PathValue $cudaLibX64
+
+    if (Test-Path $cudaLib) {
+        Copy-Item -Path (Join-Path $cudaLib '*.lib') -Destination $cudaLibX64 -Force -ErrorAction SilentlyContinue
+    }
+
+    $cudartLib = Join-Path $cudaLibX64 'cudart.lib'
+    if (-not (Test-Path $cudartLib)) {
+        throw "Could not locate cudart.lib at $cudartLib. The Windows CUDA library layout is incomplete for PyTorch extension linking."
+    }
+
+    $env:LIB = "$cudaLibX64;$cudaLib;$env:LIB"
+    Write-Host "[native-wheels] CUDA Windows library layout ready: $cudaLibX64"
+}
+
 $resolvedOutDir = [System.IO.Path]::GetFullPath($OutDir)
 $resolvedWorkDir = [System.IO.Path]::GetFullPath($WorkDir)
 $venvDir = Join-Path $resolvedWorkDir 'venv'
@@ -117,6 +137,7 @@ if (Test-Path $ccclInclude) {
     Write-Host "[native-wheels] Added CUDA CCCL include path: $ccclInclude"
 }
 Ensure-CudaCcclHeaders -CudaRoot $CudaRoot
+Ensure-CudaWindowsLibLayout -CudaRoot $CudaRoot
 
 Invoke-Python -Arguments @('-m', 'venv', $venvDir)
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'

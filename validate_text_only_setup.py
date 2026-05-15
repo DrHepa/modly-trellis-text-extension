@@ -157,6 +157,7 @@ def validate_native_wheels_tooling() -> None:
     require("Invoke-Expression" not in build_nvdiffrast, "build-nvdiffrast.ps1 must not construct commands via Invoke-Expression")
     require("include\\cccl" in build_nvdiffrast and "$env:INCLUDE" in build_nvdiffrast, "build-nvdiffrast.ps1 must add Conda CUDA CCCL headers to INCLUDE")
     require("Ensure-CudaCcclHeaders" in build_nvdiffrast and "cuda-cccl_win-64" in build_nvdiffrast, "build-nvdiffrast.ps1 must normalize Conda CCCL nv headers into CUDA include")
+    require("Ensure-CudaWindowsLibLayout" in build_nvdiffrast and "cudart.lib" in build_nvdiffrast, "build-nvdiffrast.ps1 must normalize Conda CUDA Windows library layout")
     require("pip wheel" in build_nvdiffrast and "--no-build-isolation" in build_nvdiffrast, "build-nvdiffrast.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/NVlabs/nvdiffrast.git" in build_nvdiffrast and "v0.4.0" in build_nvdiffrast, "build-nvdiffrast.ps1 must pin nvdiffrast source")
 
@@ -166,6 +167,7 @@ def validate_native_wheels_tooling() -> None:
     require("Invoke-Expression" not in build_diff, "build-diff-gaussian.ps1 must not construct commands via Invoke-Expression")
     require("include\\cccl" in build_diff and "$env:INCLUDE" in build_diff, "build-diff-gaussian.ps1 must add Conda CUDA CCCL headers to INCLUDE")
     require("Ensure-CudaCcclHeaders" in build_diff and "cuda-cccl_win-64" in build_diff, "build-diff-gaussian.ps1 must normalize Conda CCCL nv headers into CUDA include")
+    require("Ensure-CudaWindowsLibLayout" in build_diff and "cudart.lib" in build_diff, "build-diff-gaussian.ps1 must normalize Conda CUDA Windows library layout")
     require("pip wheel" in build_diff and "--no-build-isolation" in build_diff, "build-diff-gaussian.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/autonomousvision/mip-splatting.git" in build_diff and "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9" in build_diff, "build-diff-gaussian.ps1 must pin mip-splatting source")
     require("submodules/diff-gaussian-rasterization" in build_diff, "build-diff-gaussian.ps1 must build the diff-gaussian subdirectory")
