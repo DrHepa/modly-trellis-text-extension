@@ -77,6 +77,14 @@ $ccclInclude = Join-Path $CudaRoot 'include\cccl'
 if (Test-Path $ccclInclude) {
     $env:INCLUDE = "$ccclInclude;$env:INCLUDE"
     Write-Host "[native-wheels] Added CUDA CCCL include path: $ccclInclude"
+
+    $cudaInclude = Join-Path $CudaRoot 'include'
+    $ccclNvInclude = Join-Path $ccclInclude 'nv'
+    $cudaNvInclude = Join-Path $cudaInclude 'nv'
+    if ((Test-Path $ccclNvInclude) -and -not (Test-Path $cudaNvInclude)) {
+        Copy-Item -Path $ccclNvInclude -Destination $cudaNvInclude -Recurse
+        Write-Host "[native-wheels] Mirrored CUDA CCCL nv headers to: $cudaNvInclude"
+    }
 }
 
 Invoke-Python -Arguments @('-m', 'venv', $venvDir)
