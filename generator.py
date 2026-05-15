@@ -2,7 +2,7 @@
 Text-only TRELLIS extension for Modly.
 
 Runtime shape:
-    prompt -> TrellisTextTo3DPipeline -> mesh + gaussian -> textured GLB
+    prompt -> selected TRELLIS text model -> mesh + gaussian -> textured GLB
 
 Only pure-Python upstream sources live under vendor/. Native CUDA packages such
 as nvdiffrast and diff_gaussian_rasterization must resolve from the extension
@@ -30,6 +30,7 @@ _EXTENSION_DIR = Path(__file__).parent
 _VENDOR_DIR = _EXTENSION_DIR / "vendor"
 _TEXT_PIPELINE_CONFIG_FILE = "pipeline.text-localized.json"
 _TEXT_AUX_WEIGHTS_DIR = "localized-aux-weights"
+_SUPPORTED_NODE_IDS = {"text-to-mesh-base", "text-to-mesh-large", "text-to-mesh"}
 
 _NATIVE_VENDOR_OVERLAPS = {
     "nvdiffrast",
@@ -107,8 +108,9 @@ class TrellisTextGenerator(BaseGenerator):
 
     @classmethod
     def capability_params_schema(cls, node_id: str) -> list[dict[str, Any]]:
-        if node_id != "text-to-mesh":
-            raise RuntimeError(f"[TrellisTextGenerator] Unsupported node '{node_id}'. Only text-to-mesh is available.")
+        if node_id not in _SUPPORTED_NODE_IDS:
+            supported = ", ".join(sorted(_SUPPORTED_NODE_IDS))
+            raise RuntimeError(f"[TrellisTextGenerator] Unsupported node '{node_id}'. Supported nodes: {supported}.")
         return TEXT_TO_MESH_PARAMS_SCHEMA
 
     def generate(
@@ -124,6 +126,7 @@ class TrellisTextGenerator(BaseGenerator):
     def _setup_env(self) -> None:
         os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
         os.environ.setdefault("SPARSE_CONV_BACKEND", "spconv")
+        os.environ.setdefault("SPCONV_ALGO", "native")
         warnings.filterwarnings("ignore", category=FutureWarning, module=r"spconv(\.|$).*")
 
         if importlib.util.find_spec("xformers") is not None:

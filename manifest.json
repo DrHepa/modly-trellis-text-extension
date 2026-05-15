@@ -3,7 +3,7 @@
   "name": "TRELLIS Text",
   "type": "model",
   "source": "https://github.com/DrHepa/modly-trellis-text-extension",
-  "description": "Text-only TRELLIS extension for Modly: prompt to textured GLB mesh using the official native TRELLIS text pipeline.",
+  "description": "Text-only TRELLIS extension for Modly: prompt to textured GLB mesh using the official native TRELLIS text pipeline with Base, Large, and XL model nodes.",
   "version": "0.1.0",
   "author": "DrHepa",
   "generator_class": "TrellisTextGenerator",
@@ -15,10 +15,182 @@
   ],
   "nodes": [
     {
+      "id": "text-to-mesh-base",
+      "name": "Text to Mesh Base (Low VRAM)",
+      "capability_id": "text-to-mesh-base",
+      "description": "Generate a textured GLB mesh from the Prompt parameter using microsoft/TRELLIS-text-base. This is the lowest-VRAM official TRELLIS text model. The image input is ignored and exists only for upstream Modly model-node compatibility.",
+      "input": "image",
+      "output": "mesh",
+      "weight_owner_id": "text-base",
+      "hf_repo": "microsoft/TRELLIS-text-base",
+      "download_check": "pipeline.json",
+      "params_schema": [
+        {
+          "id": "prompt",
+          "label": "Prompt",
+          "type": "string",
+          "default": "",
+          "tooltip": "Text prompt used by the native TRELLIS text-to-mesh pipeline. Upstream Modly currently requires a dummy image input for model nodes; the image is ignored."
+        },
+        {
+          "id": "sparse_steps",
+          "label": "Sparse Structure Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for sparse structure generation."
+        },
+        {
+          "id": "slat_steps",
+          "label": "Structured Latent Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for structured latent generation."
+        },
+        {
+          "id": "sparse_cfg",
+          "label": "Sparse CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for sparse structure generation."
+        },
+        {
+          "id": "slat_cfg",
+          "label": "Structured Latent CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for structured latent generation."
+        },
+        {
+          "id": "texture_size",
+          "label": "Texture Size",
+          "type": "select",
+          "options": [
+            { "value": 1024, "label": "1024" },
+            { "value": 2048, "label": "2048" },
+            { "value": 4096, "label": "4096" }
+          ],
+          "default": 1024,
+          "tooltip": "Resolution of the baked texture atlas used by official TRELLIS postprocessing."
+        },
+        {
+          "id": "simplify",
+          "label": "Simplify Ratio",
+          "type": "float",
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "tooltip": "Triangle simplification ratio used during GLB postprocessing."
+        },
+        {
+          "id": "seed",
+          "label": "Seed",
+          "type": "int",
+          "default": 42,
+          "min": 0,
+          "max": 2147483647,
+          "tooltip": "Seed for reproducibility. Click shuffle for a random seed."
+        }
+      ]
+    },
+    {
+      "id": "text-to-mesh-large",
+      "name": "Text to Mesh Large",
+      "capability_id": "text-to-mesh-large",
+      "description": "Generate a textured GLB mesh from the Prompt parameter using microsoft/TRELLIS-text-large. This is the balanced official TRELLIS text model. The image input is ignored and exists only for upstream Modly model-node compatibility.",
+      "input": "image",
+      "output": "mesh",
+      "weight_owner_id": "text-large",
+      "hf_repo": "microsoft/TRELLIS-text-large",
+      "download_check": "pipeline.json",
+      "params_schema": [
+        {
+          "id": "prompt",
+          "label": "Prompt",
+          "type": "string",
+          "default": "",
+          "tooltip": "Text prompt used by the native TRELLIS text-to-mesh pipeline. Upstream Modly currently requires a dummy image input for model nodes; the image is ignored."
+        },
+        {
+          "id": "sparse_steps",
+          "label": "Sparse Structure Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for sparse structure generation."
+        },
+        {
+          "id": "slat_steps",
+          "label": "Structured Latent Steps",
+          "type": "int",
+          "default": 12,
+          "min": 1,
+          "max": 50,
+          "tooltip": "Diffusion steps for structured latent generation."
+        },
+        {
+          "id": "sparse_cfg",
+          "label": "Sparse CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for sparse structure generation."
+        },
+        {
+          "id": "slat_cfg",
+          "label": "Structured Latent CFG",
+          "type": "float",
+          "default": 7.5,
+          "min": 0.0,
+          "max": 20.0,
+          "tooltip": "Classifier-free guidance strength for structured latent generation."
+        },
+        {
+          "id": "texture_size",
+          "label": "Texture Size",
+          "type": "select",
+          "options": [
+            { "value": 1024, "label": "1024" },
+            { "value": 2048, "label": "2048" },
+            { "value": 4096, "label": "4096" }
+          ],
+          "default": 1024,
+          "tooltip": "Resolution of the baked texture atlas used by official TRELLIS postprocessing."
+        },
+        {
+          "id": "simplify",
+          "label": "Simplify Ratio",
+          "type": "float",
+          "default": 0.95,
+          "min": 0.0,
+          "max": 1.0,
+          "tooltip": "Triangle simplification ratio used during GLB postprocessing."
+        },
+        {
+          "id": "seed",
+          "label": "Seed",
+          "type": "int",
+          "default": 42,
+          "min": 0,
+          "max": 2147483647,
+          "tooltip": "Seed for reproducibility. Click shuffle for a random seed."
+        }
+      ]
+    },
+    {
       "id": "text-to-mesh",
-      "name": "Text to Mesh",
+      "name": "Text to Mesh XL",
       "capability_id": "text-to-mesh",
-      "description": "Generate a textured GLB mesh from the Prompt parameter using microsoft/TRELLIS-text-xlarge and the official native TRELLIS text pipeline. The image input is ignored and exists only for upstream Modly model-node compatibility.",
+      "description": "Generate a textured GLB mesh from the Prompt parameter using microsoft/TRELLIS-text-xlarge and the official native TRELLIS text pipeline. This node preserves the original text-to-mesh capability id. The image input is ignored and exists only for upstream Modly model-node compatibility.",
       "input": "image",
       "output": "mesh",
       "weight_owner_id": "text-xlarge",

@@ -20,16 +20,32 @@ def validate_manifest() -> None:
     require(manifest["generator_class"] == "TrellisTextGenerator", "manifest generator_class must be TrellisTextGenerator")
     require(manifest["source"] == "https://github.com/DrHepa/modly-trellis-text-extension", "manifest source mismatch")
     nodes = manifest.get("nodes")
-    require(isinstance(nodes, list) and len(nodes) == 1, "manifest must expose exactly one node")
-    node = nodes[0]
-    require(node["id"] == "text-to-mesh", "only text-to-mesh node is allowed")
-    require(node["capability_id"] == "text-to-mesh", "capability_id must be text-to-mesh")
-    require(node["input"] == "image", "manifest input must remain image for upstream Modly model-node compatibility")
-    require(node["output"] == "mesh", "manifest output must remain mesh")
-    require(node["hf_repo"] == "microsoft/TRELLIS-text-xlarge", "hf_repo must be microsoft/TRELLIS-text-xlarge")
-    require(node["download_check"] == "pipeline.json", "download_check must be pipeline.json")
-    params = {param["id"]: param for param in node.get("params_schema", [])}
-    require(params.get("prompt", {}).get("type") == "string", "prompt parameter must use upstream-supported string type")
+    require(isinstance(nodes, list) and len(nodes) == 3, "manifest must expose Base, Large, and XL text nodes")
+
+    expected_nodes = {
+        "text-to-mesh-base": ("microsoft/TRELLIS-text-base", "text-base"),
+        "text-to-mesh-large": ("microsoft/TRELLIS-text-large", "text-large"),
+        "text-to-mesh": ("microsoft/TRELLIS-text-xlarge", "text-xlarge"),
+    }
+    actual_ids = {node.get("id") for node in nodes}
+    require(actual_ids == set(expected_nodes), f"manifest nodes mismatch: {sorted(actual_ids)}")
+
+    reference_param_ids: list[str] | None = None
+    for node in nodes:
+        node_id = node["id"]
+        expected_repo, expected_owner = expected_nodes[node_id]
+        require(node.get("capability_id") == node_id, f"{node_id} capability_id must match node id")
+        require(node["input"] == "image", f"{node_id} input must remain image for upstream Modly model-node compatibility")
+        require(node["output"] == "mesh", f"{node_id} output must remain mesh")
+        require(node["hf_repo"] == expected_repo, f"{node_id} hf_repo must be {expected_repo}")
+        require(node["weight_owner_id"] == expected_owner, f"{node_id} weight_owner_id must be {expected_owner}")
+        require(node["download_check"] == "pipeline.json", f"{node_id} download_check must be pipeline.json")
+        params = {param["id"]: param for param in node.get("params_schema", [])}
+        require(params.get("prompt", {}).get("type") == "string", f"{node_id} prompt parameter must use upstream-supported string type")
+        param_ids = [param["id"] for param in node.get("params_schema", [])]
+        if reference_param_ids is None:
+            reference_param_ids = param_ids
+        require(param_ids == reference_param_ids, f"{node_id} must share the same params_schema order as the other text nodes")
 
 
 def validate_no_removed_runtime_code() -> None:
@@ -84,6 +100,7 @@ def validate_setup_exclusions() -> None:
 
     generator = (ROOT / "generator.py").read_text(encoding="utf-8")
     require("warnings.filterwarnings" in generator and "spconv" in generator, "generator must suppress spconv FutureWarnings at runtime")
+    require("SPCONV_ALGO" in generator and "native" in generator, "generator must default spconv to native algo for one-off Modly runs")
     require(
         setup.index("install_spconv(venv") < setup.index("native_build_env, native_diagnostics = resolve_native_build_env"),
         "setup.py must install wheel-first dependencies before Windows native compiler preflight",
@@ -117,6 +134,7 @@ def validate_vendor_placeholder() -> None:
 def validate_readme() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     require("Modly TRELLIS Text Extension" in readme, "README must have a professional project title")
+    require("text-to-mesh-base" in readme and "text-to-mesh-large" in readme and "microsoft/TRELLIS-text-xlarge" in readme, "README must document all TRELLIS text model nodes")
     require("__cudaLaunch" in readme, "README must document the ARM64 CUDA toolkit mismatch failure mode")
     require("python -m pip" in readme, "README must document why setup uses python -m pip")
     require("Visual Studio Build Tools 2022" in readme, "README must document Windows native build prerequisites")

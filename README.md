@@ -5,14 +5,17 @@ Native text-to-3D extension for [Modly](https://github.com/DrHepa) using the off
 This repository provides a focused text-only runtime:
 
 ```text
-text prompt -> microsoft/TRELLIS-text-xlarge -> textured GLB mesh
+text prompt -> selected microsoft/TRELLIS-text-* model -> textured GLB mesh
 ```
 
 This extension is intentionally separate from the full TRELLIS.2 image/texturing extension. It is designed for users who only need prompt-to-mesh generation and do not want the additional image-to-mesh and mesh-texturing dependency surface.
 
 ## Features
 
-- Single Modly node: `text-to-mesh`
+- Three Modly nodes backed by official TRELLIS text checkpoints:
+  - `text-to-mesh-base` — Base / low VRAM
+  - `text-to-mesh-large` — Large / balanced
+  - `text-to-mesh` — XL / original high-quality node kept for workflow compatibility
 - Generator class: `TrellisTextGenerator`
 - Official native TRELLIS text pipeline: `TrellisTextTo3DPipeline`
 - GLB export through `trellis.utils.postprocessing_utils.to_glb`
@@ -21,7 +24,7 @@ This extension is intentionally separate from the full TRELLIS.2 image/texturing
 
 ### Upstream Modly workflow compatibility
 
-The runtime is text-to-mesh, but upstream Modly currently executes `model` workflow nodes through the image generation path and calls `readFileBase64()` before invoking the extension. For compatibility, the node is therefore declared as `image -> mesh` in `manifest.json`.
+The runtime is text-to-mesh, but upstream Modly currently executes `model` workflow nodes through the image generation path and calls `readFileBase64()` before invoking the extension. For compatibility, every TRELLIS text node is therefore declared as `image -> mesh` in `manifest.json`.
 
 The image input is a placeholder and is ignored by `TrellisTextGenerator`; generation is controlled by the `Prompt` parameter. In workflows, connect any valid image input or select an image before running, then enter the actual text prompt in the node parameters.
 
@@ -38,9 +41,15 @@ This extension requires an NVIDIA CUDA runtime. CPU-only execution, macOS, and n
 
 ## Models
 
-Primary model repository:
+Official model repositories exposed as separate nodes:
 
-- `microsoft/TRELLIS-text-xlarge`
+| Node | Hugging Face repo | Use case |
+| --- | --- | --- |
+| `text-to-mesh-base` | `microsoft/TRELLIS-text-base` | Lowest-VRAM official text model; recommended first choice for 8 GB Windows laptops. |
+| `text-to-mesh-large` | `microsoft/TRELLIS-text-large` | Balanced quality/VRAM target. |
+| `text-to-mesh` | `microsoft/TRELLIS-text-xlarge` | Original XL node; highest VRAM pressure and best kept for 16 GB+ GPUs. |
+
+The model size is intentionally represented as separate nodes instead of a runtime parameter. Modly tracks downloads, readiness, and model directories per node/capability, while the official TRELLIS text variants live in separate Hugging Face repositories.
 
 Additional model assets used by the native TRELLIS text pipeline include:
 

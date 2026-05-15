@@ -809,7 +809,7 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     if installed_native_wheels:
         print("[setup] Native TRELLIS postprocessing dependencies satisfied by Windows wheels.")
         print("[setup] Done. Extension venv is ready at:", venv)
-        print("[setup] First runtime load still requires Hugging Face access for microsoft/TRELLIS-text-xlarge and hidden CLIP assets.")
+        print("[setup] First runtime load still requires Hugging Face access for the selected microsoft/TRELLIS-text-* model and hidden CLIP assets.")
         return
 
     native_build_env, native_diagnostics = resolve_native_build_env(venv, gpu_sm=gpu_sm, cuda_version=cuda_version, build_env=build_env)
@@ -822,7 +822,7 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
         install_core_native_dependencies(venv, Path(tmp), native_build_env)
 
     print("[setup] Done. Extension venv is ready at:", venv)
-    print("[setup] First runtime load still requires Hugging Face access for microsoft/TRELLIS-text-xlarge and hidden CLIP assets.")
+    print("[setup] First runtime load still requires Hugging Face access for the selected microsoft/TRELLIS-text-* model and hidden CLIP assets.")
 
 
 if __name__ == "__main__":
