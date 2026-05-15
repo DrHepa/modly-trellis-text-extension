@@ -51,6 +51,42 @@ function Ensure-Directory {
     New-Item -ItemType Directory -Force -Path $PathValue | Out-Null
 }
 
+function Ensure-CudaCcclHeaders {
+    param([Parameter(Mandatory = $true)][string]$CudaRoot)
+
+    $cudaInclude = Join-Path $CudaRoot 'include'
+    $cudaNvInclude = Join-Path $cudaInclude 'nv'
+    $cudaNvTarget = Join-Path $cudaNvInclude 'target'
+    if (Test-Path $cudaNvTarget) {
+        Write-Host "[native-wheels] CUDA CCCL nv/target header already available at: $cudaNvTarget"
+        return
+    }
+
+    $candidateNvIncludes = @(
+        (Join-Path $CudaRoot 'include\cccl\nv'),
+        (Join-Path $CudaRoot 'targets\x86_64-windows\include\nv'),
+        (Join-Path $CudaRoot 'targets\x86_64-win32\include\nv')
+    )
+    $sourceNvInclude = $candidateNvIncludes | Where-Object { Test-Path (Join-Path $_ 'target') } | Select-Object -First 1
+
+    if (-not $sourceNvInclude) {
+        $foundNvTarget = Get-ChildItem -Path $CudaRoot -Recurse -File -Filter target -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '[\\/]nv[\\/]target$' } |
+            Select-Object -First 1
+        if ($foundNvTarget) {
+            $sourceNvInclude = Split-Path $foundNvTarget.FullName -Parent
+        }
+    }
+
+    if (-not $sourceNvInclude) {
+        throw "Could not locate CUDA CCCL nv/target header under $CudaRoot. Install the NVIDIA Conda cuda-cccl_win-64 package or provide a full CUDA Toolkit layout."
+    }
+
+    Ensure-Directory -PathValue $cudaNvInclude
+    Copy-Item -Path (Join-Path $sourceNvInclude '*') -Destination $cudaNvInclude -Recurse -Force
+    Write-Host "[native-wheels] Mirrored CUDA CCCL nv headers from $sourceNvInclude to: $cudaNvInclude"
+}
+
 $resolvedOutDir = [System.IO.Path]::GetFullPath($OutDir)
 $resolvedWorkDir = [System.IO.Path]::GetFullPath($WorkDir)
 $venvDir = Join-Path $resolvedWorkDir 'venv'
@@ -79,15 +115,8 @@ $ccclInclude = Join-Path $CudaRoot 'include\cccl'
 if (Test-Path $ccclInclude) {
     $env:INCLUDE = "$ccclInclude;$env:INCLUDE"
     Write-Host "[native-wheels] Added CUDA CCCL include path: $ccclInclude"
-
-    $cudaInclude = Join-Path $CudaRoot 'include'
-    $ccclNvInclude = Join-Path $ccclInclude 'nv'
-    $cudaNvInclude = Join-Path $cudaInclude 'nv'
-    if ((Test-Path $ccclNvInclude) -and -not (Test-Path $cudaNvInclude)) {
-        Copy-Item -Path $ccclNvInclude -Destination $cudaNvInclude -Recurse
-        Write-Host "[native-wheels] Mirrored CUDA CCCL nv headers to: $cudaNvInclude"
-    }
 }
+Ensure-CudaCcclHeaders -CudaRoot $CudaRoot
 
 Invoke-Python -Arguments @('-m', 'venv', $venvDir)
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'

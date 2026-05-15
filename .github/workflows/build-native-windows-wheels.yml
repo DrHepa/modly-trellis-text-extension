@@ -46,7 +46,7 @@ jobs:
         shell: pwsh
         run: |
           $cudaEnv = Join-Path $env:RUNNER_TEMP 'cuda-build'
-          conda create -y -p $cudaEnv -c nvidia/label/cuda-12.8.1 -c nvidia -c conda-forge cuda-nvcc cuda-cudart-dev cuda-cccl libcublas-dev libcusparse-dev libcusolver-dev libcurand-dev libcufft-dev
+          conda create -y -p $cudaEnv -c nvidia/label/cuda-12.8.1 -c nvidia -c conda-forge cuda-nvcc cuda-cudart-dev cuda-cccl cuda-cccl_win-64 libcublas-dev libcusparse-dev libcusolver-dev libcurand-dev libcufft-dev
           $cudaRoot = Join-Path $cudaEnv 'Library'
           $nvcc = Join-Path $cudaRoot 'bin\nvcc.exe'
           if (-not (Test-Path $nvcc)) {
