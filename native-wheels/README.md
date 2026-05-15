@@ -129,4 +129,4 @@ Run it from GitHub Actions or with `gh` after the workflow has been committed an
 gh workflow run build-native-windows-wheels.yml -f release_tag=native-wheels-torch270-cu128-v1 -f upload_release=true
 ```
 
-The workflow builds `cp311` and `cp312` wheels on `windows-2022`, installs CUDA Toolkit 12.8 build components from the NVIDIA Conda channel, runs the smoke test, and optionally uploads the wheels plus license files to the release tag.
+The workflow builds `cp311` and `cp312` wheels on `windows-2022`, installs CUDA Toolkit 12.8 build components into a temporary Conda prefix from the NVIDIA Conda channel, runs the smoke test, and optionally uploads the wheels plus license files to the release tag.

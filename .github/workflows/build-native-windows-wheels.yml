@@ -35,33 +35,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+      - name: Set up Conda for CUDA packages
+        uses: conda-incubator/setup-miniconda@v4
         with:
-          python-version: ${{ matrix.python-version }}
-          architecture: x64
+          miniconda-version: latest
+          auto-update-conda: false
+          auto-activate-base: false
 
       - name: Install CUDA Toolkit 12.8 packages
-        uses: mamba-org/setup-micromamba@v3
-        with:
-          environment-name: cuda-build
-          init-shell: powershell
-          create-args: >-
-            -c nvidia/label/cuda-12.8.1
-            -c nvidia
-            cuda-nvcc
-            cuda-cudart-dev
-            cuda-cccl
-          cache-environment: true
-          cache-downloads: true
-
-      - name: Export CUDA environment
         shell: pwsh
         run: |
-          if (-not $env:CONDA_PREFIX) {
-            throw 'CONDA_PREFIX was not set by setup-micromamba.'
-          }
-          $cudaRoot = Join-Path $env:CONDA_PREFIX 'Library'
+          $cudaEnv = Join-Path $env:RUNNER_TEMP 'cuda-build'
+          conda create -y -p $cudaEnv -c nvidia/label/cuda-12.8.1 -c nvidia -c conda-forge cuda-nvcc cuda-cudart-dev cuda-cccl
+          $cudaRoot = Join-Path $cudaEnv 'Library'
           $nvcc = Join-Path $cudaRoot 'bin\nvcc.exe'
           if (-not (Test-Path $nvcc)) {
             throw "nvcc.exe not found at $nvcc"
@@ -72,6 +58,12 @@ jobs:
           "$cudaRoot\bin" >> $env:GITHUB_PATH
           Write-Host "CUDA root: $cudaRoot"
           & $nvcc --version
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
 
       - name: Set up MSVC developer shell
         uses: ilammy/msvc-dev-cmd@v1
