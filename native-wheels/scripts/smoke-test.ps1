@@ -18,19 +18,25 @@ function Invoke-Python {
         [string]$WorkingDirectory
     )
 
-    $command = "$Python $($Arguments -join ' ')"
-    Write-Host "[native-wheels] $command"
+    $pythonParts = $Python -split ' '
+    $pythonExe = $pythonParts[0]
+    $pythonArgs = @()
+    if ($pythonParts.Length -gt 1) {
+        $pythonArgs = $pythonParts[1..($pythonParts.Length - 1)]
+    }
+    $allArgs = @($pythonArgs) + @($Arguments)
+    Write-Host "[native-wheels] $pythonExe $($allArgs -join ' ')"
     if ($WorkingDirectory) {
         Push-Location $WorkingDirectory
         try {
-            Invoke-Expression $command
+            & $pythonExe @allArgs
         }
         finally {
             Pop-Location
         }
         return
     }
-    Invoke-Expression $command
+    & $pythonExe @allArgs
 }
 
 $resolvedWheelDir = [System.IO.Path]::GetFullPath($WheelDir)
@@ -51,7 +57,7 @@ if (-not $diffGaussianWheel) {
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('modly-trellis-text-native-smoke-' + [System.Guid]::NewGuid().ToString('N'))
 $venvDir = Join-Path $tempRoot 'venv'
 
-Invoke-Python -Arguments @('-m', 'venv', '"' + $venvDir + '"')
+Invoke-Python -Arguments @('-m', 'venv', $venvDir)
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 
 try {

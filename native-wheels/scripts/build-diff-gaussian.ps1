@@ -25,19 +25,25 @@ function Invoke-Python {
         [string]$WorkingDirectory
     )
 
-    $command = "$Python $($Arguments -join ' ')"
-    Write-Host "[native-wheels] $command"
+    $pythonParts = $Python -split ' '
+    $pythonExe = $pythonParts[0]
+    $pythonArgs = @()
+    if ($pythonParts.Length -gt 1) {
+        $pythonArgs = $pythonParts[1..($pythonParts.Length - 1)]
+    }
+    $allArgs = @($pythonArgs) + @($Arguments)
+    Write-Host "[native-wheels] $pythonExe $($allArgs -join ' ')"
     if ($WorkingDirectory) {
         Push-Location $WorkingDirectory
         try {
-            Invoke-Expression $command
+            & $pythonExe @allArgs
         }
         finally {
             Pop-Location
         }
         return
     }
-    Invoke-Expression $command
+    & $pythonExe @allArgs
 }
 
 function Ensure-Directory {
@@ -69,7 +75,7 @@ $env:CUDACXX = (Join-Path $CudaRoot 'bin\nvcc.exe')
 $env:TORCH_CUDA_ARCH_LIST = $TorchCudaArchList
 $env:DISTUTILS_USE_SDK = '1'
 
-Invoke-Python -Arguments @('-m', 'venv', '"' + $venvDir + '"')
+Invoke-Python -Arguments @('-m', 'venv', $venvDir)
 $venvPython = Join-Path $venvDir 'Scripts\python.exe'
 
 & $venvPython -m pip install --upgrade pip setuptools wheel ninja

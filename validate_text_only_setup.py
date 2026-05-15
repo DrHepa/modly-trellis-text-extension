@@ -154,18 +154,21 @@ def validate_native_wheels_tooling() -> None:
     build_nvdiffrast = (ROOT / "native-wheels" / "scripts" / "build-nvdiffrast.ps1").read_text(encoding="utf-8")
     require("Set-StrictMode -Version Latest" in build_nvdiffrast, "build-nvdiffrast.ps1 must enable strict mode")
     require("$ErrorActionPreference = 'Stop'" in build_nvdiffrast, "build-nvdiffrast.ps1 must stop on errors")
+    require("Invoke-Expression" not in build_nvdiffrast, "build-nvdiffrast.ps1 must not construct commands via Invoke-Expression")
     require("pip wheel" in build_nvdiffrast and "--no-build-isolation" in build_nvdiffrast, "build-nvdiffrast.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/NVlabs/nvdiffrast.git" in build_nvdiffrast and "v0.4.0" in build_nvdiffrast, "build-nvdiffrast.ps1 must pin nvdiffrast source")
 
     build_diff = (ROOT / "native-wheels" / "scripts" / "build-diff-gaussian.ps1").read_text(encoding="utf-8")
     require("Set-StrictMode -Version Latest" in build_diff, "build-diff-gaussian.ps1 must enable strict mode")
     require("$ErrorActionPreference = 'Stop'" in build_diff, "build-diff-gaussian.ps1 must stop on errors")
+    require("Invoke-Expression" not in build_diff, "build-diff-gaussian.ps1 must not construct commands via Invoke-Expression")
     require("pip wheel" in build_diff and "--no-build-isolation" in build_diff, "build-diff-gaussian.ps1 must build wheels via pip wheel --no-build-isolation")
     require("https://github.com/autonomousvision/mip-splatting.git" in build_diff and "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9" in build_diff, "build-diff-gaussian.ps1 must pin mip-splatting source")
     require("submodules/diff-gaussian-rasterization" in build_diff, "build-diff-gaussian.ps1 must build the diff-gaussian subdirectory")
     require("submodule update --init --recursive" in build_diff, "build-diff-gaussian.ps1 must initialize recursive submodules")
 
     smoke_test = (ROOT / "native-wheels" / "scripts" / "smoke-test.ps1").read_text(encoding="utf-8")
+    require("Invoke-Expression" not in smoke_test, "smoke-test.ps1 must not construct commands via Invoke-Expression")
     require("import torch; import nvdiffrast.torch; import diff_gaussian_rasterization" in smoke_test, "smoke-test.ps1 must validate torch and native imports")
 
     nvdiffrast_license = (ROOT / "native-wheels" / "licenses" / "nvdiffrast-LICENSE.txt").read_text(encoding="utf-8")
