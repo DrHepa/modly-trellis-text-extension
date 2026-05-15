@@ -28,7 +28,12 @@ Compiled CUDA architecture targets:
 
 - `sm_61`, `sm_75`, `sm_80`, `sm_86`, `sm_89`, plus `sm_90+PTX`
 
-The v2 release expands architecture coverage after v1 exposed `cudaErrorNoKernelImageForDevice` / CUDA error 209 on some Windows laptop GPUs when `nvdiffrast` initialized its rasterizer kernels.
+The v2 release expands architecture coverage after v1 exposed `cudaErrorNoKernelImageForDevice` / CUDA error 209 on some Windows NVIDIA GPUs when `nvdiffrast` initialized its rasterizer kernels.
+
+Runtime validation so far:
+
+- `text-to-mesh-base` has generated a textured mesh successfully on a Windows system with 8 GB VRAM using the v2 wheels.
+- `text-to-mesh-large` and `text-to-mesh` may require more VRAM; use Base first on constrained systems.
 
 Expected GitHub repository:
 

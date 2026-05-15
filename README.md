@@ -45,11 +45,17 @@ Official model repositories exposed as separate nodes:
 
 | Node | Hugging Face repo | Use case |
 | --- | --- | --- |
-| `text-to-mesh-base` | `microsoft/TRELLIS-text-base` | Lowest-VRAM official text model; recommended first choice for 8 GB Windows laptops. |
-| `text-to-mesh-large` | `microsoft/TRELLIS-text-large` | Balanced quality/VRAM target. |
+| `text-to-mesh-base` | `microsoft/TRELLIS-text-base` | Lowest-VRAM official text model; recommended first choice for systems with 8 GB VRAM. |
+| `text-to-mesh-large` | `microsoft/TRELLIS-text-large` | Balanced quality/VRAM target; useful when Base works and there is enough headroom. |
 | `text-to-mesh` | `microsoft/TRELLIS-text-xlarge` | Original XL node; highest VRAM pressure and best kept for 16 GB+ GPUs. |
 
 The model size is intentionally represented as separate nodes instead of a runtime parameter. Modly tracks downloads, readiness, and model directories per node/capability, while the official TRELLIS text variants live in separate Hugging Face repositories.
+
+### Runtime validation notes
+
+- Windows + NVIDIA CUDA: `text-to-mesh-base` has been validated end-to-end with low settings on an 8 GB VRAM system, generating a textured mesh successfully.
+- Linux ARM64/aarch64 + NVIDIA CUDA: on the current ARM64 CUDA test machine, the Base, Large, and XL nodes appear to work without native Windows wheels; Linux ARM64 keeps the source-build/native runtime path.
+- If generation completes both sampling stages but fails during GLB export with `nvdiffrast` / CUDA error 209, reinstall or repair the extension so setup pulls the v2 native wheels described below.
 
 Additional model assets used by the native TRELLIS text pipeline include:
 
@@ -140,7 +146,7 @@ If Windows setup fails while compiling a native extension, verify that **Visual 
 
 For current PyTorch `cu128` installs, this usually means installing the **CUDA Toolkit 12.8** from NVIDIA, not just the GPU driver. If CUDA is installed in a non-standard location, set `MODLY_TRELLIS_TEXT_CUDA_TOOLKIT_ROOT` to the Toolkit root before installing the extension.
 
-Before source-building these TRELLIS-native extensions on Windows, setup now tries extension-owned GitHub Release wheels for `nvdiffrast` and `diff_gaussian_rasterization`. The default release channel targets `cp311`/`cp312` on `win_amd64` for `torch==2.7.0`, `torchvision==0.22.0`, and `cu128`. You can opt out with `MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS=1` or override the release base URL with `MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL`.
+Before source-building these TRELLIS-native extensions on Windows, setup now tries extension-owned GitHub Release wheels for `nvdiffrast` and `diff_gaussian_rasterization`. The default release channel is `native-wheels-torch270-cu128-v2` and targets `cp311`/`cp312` on `win_amd64` for `torch==2.7.0`, `torchvision==0.22.0`, and `cu128`. The v2 wheels expand CUDA architecture coverage for older and newer NVIDIA GPUs and are force-reinstalled during setup repair so broken v1 wheels are replaced. You can opt out with `MODLY_TRELLIS_TEXT_DISABLE_NATIVE_WHEELS=1` or override the release base URL with `MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL`.
 
 The wheel build/upload helper docs live under `native-wheels/`, including the full upstream license texts required for redistribution review. This matters because both native packages carry non-commercial / research-oriented licensing constraints.
 
