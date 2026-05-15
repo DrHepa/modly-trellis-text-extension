@@ -1,6 +1,6 @@
 # Modly TRELLIS Text Extension
 
-Native text-to-3D extension for [Modly](https://github.com/DrHepa) using the official TRELLIS text pipeline.
+Native text-to-3D extension for [Modly](https://github.com/lightningpixel/modly) using the official TRELLIS text pipeline.
 
 This repository provides a focused text-only runtime:
 
