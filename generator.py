@@ -38,7 +38,7 @@ _NATIVE_VENDOR_OVERLAPS = {
 
 
 TEXT_TO_MESH_PARAMS_SCHEMA = [
-    {"id": "prompt", "label": "Prompt", "type": "text", "default": ""},
+    {"id": "prompt", "label": "Prompt", "type": "string", "default": ""},
     {"id": "sparse_steps", "label": "Sparse Structure Steps", "type": "int", "default": 12, "min": 1, "max": 50},
     {"id": "slat_steps", "label": "Structured Latent Steps", "type": "int", "default": 12, "min": 1, "max": 50},
     {"id": "sparse_cfg", "label": "Sparse CFG", "type": "float", "default": 7.5, "min": 0.0, "max": 20.0},

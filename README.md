@@ -19,6 +19,12 @@ This extension is intentionally separate from the full TRELLIS.2 image/texturing
 - Localized auxiliary model references for TRELLIS text pipeline assets
 - Reduced dependency surface compared with the full TRELLIS.2 extension
 
+### Upstream Modly workflow compatibility
+
+The runtime is text-to-mesh, but upstream Modly currently executes `model` workflow nodes through the image generation path and calls `readFileBase64()` before invoking the extension. For compatibility, the node is therefore declared as `image -> mesh` in `manifest.json`.
+
+The image input is a placeholder and is ignored by `TrellisTextGenerator`; generation is controlled by the `Prompt` parameter. In workflows, connect any valid image input or select an image before running, then enter the actual text prompt in the node parameters.
+
 ## Platform support
 
 This extension requires an NVIDIA CUDA runtime. CPU-only execution, macOS, and non-NVIDIA GPU backends are not supported.

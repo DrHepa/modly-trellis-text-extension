@@ -24,8 +24,12 @@ def validate_manifest() -> None:
     node = nodes[0]
     require(node["id"] == "text-to-mesh", "only text-to-mesh node is allowed")
     require(node["capability_id"] == "text-to-mesh", "capability_id must be text-to-mesh")
+    require(node["input"] == "image", "manifest input must remain image for upstream Modly model-node compatibility")
+    require(node["output"] == "mesh", "manifest output must remain mesh")
     require(node["hf_repo"] == "microsoft/TRELLIS-text-xlarge", "hf_repo must be microsoft/TRELLIS-text-xlarge")
     require(node["download_check"] == "pipeline.json", "download_check must be pipeline.json")
+    params = {param["id"]: param for param in node.get("params_schema", [])}
+    require(params.get("prompt", {}).get("type") == "string", "prompt parameter must use upstream-supported string type")
 
 
 def validate_no_removed_runtime_code() -> None:

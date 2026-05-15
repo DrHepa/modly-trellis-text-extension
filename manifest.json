@@ -18,8 +18,8 @@
       "id": "text-to-mesh",
       "name": "Text to Mesh",
       "capability_id": "text-to-mesh",
-      "description": "Generate a textured GLB mesh from a text prompt using microsoft/TRELLIS-text-xlarge and the official native TRELLIS text pipeline.",
-      "input": "text",
+      "description": "Generate a textured GLB mesh from the Prompt parameter using microsoft/TRELLIS-text-xlarge and the official native TRELLIS text pipeline. The image input is ignored and exists only for upstream Modly model-node compatibility.",
+      "input": "image",
       "output": "mesh",
       "weight_owner_id": "text-xlarge",
       "hf_repo": "microsoft/TRELLIS-text-xlarge",
@@ -28,9 +28,9 @@
         {
           "id": "prompt",
           "label": "Prompt",
-          "type": "text",
+          "type": "string",
           "default": "",
-          "tooltip": "Text prompt used by the native TRELLIS text-to-mesh pipeline."
+          "tooltip": "Text prompt used by the native TRELLIS text-to-mesh pipeline. Upstream Modly currently requires a dummy image input for model nodes; the image is ignored."
         },
         {
           "id": "sparse_steps",
