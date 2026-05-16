@@ -33,7 +33,8 @@ The v2 release expands architecture coverage after v1 exposed `cudaErrorNoKernel
 Runtime validation so far:
 
 - `text-to-mesh-base` has generated a textured mesh successfully on a Windows system with 8 GB VRAM using the v2 wheels.
-- `text-to-mesh-large` and `text-to-mesh` may require more VRAM; use Base first on constrained systems.
+- `text-to-mesh-large` has also generated a textured mesh successfully on a Windows system with 8 GB VRAM using the v2 wheels.
+- `text-to-mesh` / XL still has the highest VRAM pressure; use Base first on constrained systems and Large when quality/headroom permits.
 
 Expected GitHub repository:
 

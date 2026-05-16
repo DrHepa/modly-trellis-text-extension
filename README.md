@@ -45,15 +45,15 @@ Official model repositories exposed as separate nodes:
 
 | Node | Hugging Face repo | Use case |
 | --- | --- | --- |
-| `text-to-mesh-base` | `microsoft/TRELLIS-text-base` | Lowest-VRAM official text model; recommended first choice for systems with 8 GB VRAM. |
-| `text-to-mesh-large` | `microsoft/TRELLIS-text-large` | Balanced quality/VRAM target; useful when Base works and there is enough headroom. |
+| `text-to-mesh-base` | `microsoft/TRELLIS-text-base` | Lowest-VRAM official text model; recommended first choice for constrained systems. |
+| `text-to-mesh-large` | `microsoft/TRELLIS-text-large` | Balanced quality/VRAM target; validated on Windows with 8 GB VRAM using the v2 native wheels. |
 | `text-to-mesh` | `microsoft/TRELLIS-text-xlarge` | Original XL node; highest VRAM pressure and best kept for 16 GB+ GPUs. |
 
 The model size is intentionally represented as separate nodes instead of a runtime parameter. Modly tracks downloads, readiness, and model directories per node/capability, while the official TRELLIS text variants live in separate Hugging Face repositories.
 
 ### Runtime validation notes
 
-- Windows + NVIDIA CUDA: `text-to-mesh-base` has been validated end-to-end with low settings on an 8 GB VRAM system, generating a textured mesh successfully.
+- Windows + NVIDIA CUDA: `text-to-mesh-base` and `text-to-mesh-large` have both been validated end-to-end on an 8 GB VRAM system, generating textured meshes successfully with the v2 native wheels. Start with Base for maximum headroom; use Large when you want better quality and the system remains stable.
 - Linux ARM64/aarch64 + NVIDIA CUDA: on the current ARM64 CUDA test machine, the Base, Large, and XL nodes appear to work without native Windows wheels; Linux ARM64 keeps the source-build/native runtime path.
 - If generation completes both sampling stages but fails during GLB export with `nvdiffrast` / CUDA error 209, reinstall or repair the extension so setup pulls the v2 native wheels described below.
 
