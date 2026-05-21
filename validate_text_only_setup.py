@@ -95,6 +95,10 @@ def validate_setup_exclusions() -> None:
     require("MODLY_TRELLIS_TEXT_NATIVE_WHEEL_BASE_URL" in setup, "setup.py must support overriding the native wheel release base URL")
     require("smoke_check_native_wheels" in setup, "setup.py must smoke-check imported native wheels")
     require("native-wheels-torch270-cu128-v2" in setup, "setup.py must target the widened-architecture native wheel release tag")
+    require("native-wheels-linux-x86_64-torch270-cu128-v1" in setup, "setup.py must define the Linux x86_64 native wheel release tag")
+    require("NativeWheelPolicy" in setup and "WINDOWS_NATIVE_WHEEL_POLICY" in setup and "LINUX_X86_64_NATIVE_WHEEL_POLICY" in setup, "setup.py must use explicit per-platform native wheel policies")
+    require('"wheel_platform_tag": "linux_x86_64"' in setup or 'wheel_platform_tag="linux_x86_64"' in setup, "setup.py must use an explicit linux_x86_64 wheel platform tag in the policy")
+    require("is_linux_x86_64" in setup and "active_native_wheel_policy" in setup, "setup.py must resolve native wheel policy from explicit platform helpers")
     require("candidate_prebuilt_spconv_tags" in setup and "return [\"cu118\"]" in setup, "setup.py must avoid unavailable spconv-cu120 cp312 Windows wheels")
     require("warnings.filterwarnings('ignore', category=FutureWarning" in setup, "spconv smoke check must suppress upstream FutureWarning noise")
     require("import torch; import spconv.pytorch as spconv" in setup, "spconv smoke check must import torch before spconv for Windows DLL paths")
@@ -159,9 +163,13 @@ def validate_native_wheels_tooling() -> None:
         ROOT / "native-wheels" / "scripts" / "build-nvdiffrast.ps1",
         ROOT / "native-wheels" / "scripts" / "build-diff-gaussian.ps1",
         ROOT / "native-wheels" / "scripts" / "smoke-test.ps1",
+        ROOT / "native-wheels" / "scripts" / "build-nvdiffrast-linux.sh",
+        ROOT / "native-wheels" / "scripts" / "build-diff-gaussian-linux.sh",
+        ROOT / "native-wheels" / "scripts" / "smoke-test-linux.sh",
         ROOT / "native-wheels" / "licenses" / "nvdiffrast-LICENSE.txt",
         ROOT / "native-wheels" / "licenses" / "diff-gaussian-rasterization-LICENSE.md",
         ROOT / ".github" / "workflows" / "build-native-windows-wheels.yml",
+        ROOT / ".github" / "workflows" / "build-native-linux-wheels.yml",
     ]
     for path in required_files:
         require(path.exists(), f"Missing required native wheel tooling file: {path.relative_to(ROOT)}")
@@ -170,10 +178,15 @@ def validate_native_wheels_tooling() -> None:
     require("CUDA Toolkit 12.8" in native_readme, "native-wheels README must require CUDA Toolkit 12.8")
     require("Visual Studio Build Tools 2022" in native_readme, "native-wheels README must document VS Build Tools 2022")
     require("native-wheels-torch270-cu128-v2" in native_readme, "native-wheels README must document the release tag")
+    require("native-wheels-linux-x86_64-torch270-cu128-v1" in native_readme, "native-wheels README must document the Linux release tag")
     require("sm_75" in native_readme and "cudaErrorNoKernelImageForDevice" in native_readme, "native-wheels README must document widened CUDA architecture coverage")
     require("non-commercial" in native_readme and "research" in native_readme, "native-wheels README must document licensing limits")
     require("smoke-test.ps1" in native_readme, "native-wheels README must document smoke-test.ps1")
-    require("build-native-windows-wheels.yml" in native_readme, "native-wheels README must document the GitHub Actions workflow")
+    require("smoke-test-linux.sh" in native_readme, "native-wheels README must document smoke-test-linux.sh")
+    require("linux_x86_64" in native_readme and "manylinux" in native_readme, "native-wheels README must explain the hosted-Ubuntu linux_x86_64 phase-1 scope")
+    require("GitHub-hosted Linux CI has NO NVIDIA GPU" in native_readme, "native-wheels README must document import-only Linux CI smoke testing")
+    require("Manual smoke on a real Linux x86_64 NVIDIA GPU is still required" in native_readme, "native-wheels README must require manual Linux NVIDIA runtime validation")
+    require("build-native-windows-wheels.yml" in native_readme and "build-native-linux-wheels.yml" in native_readme, "native-wheels README must document both GitHub Actions workflows")
 
     build_nvdiffrast = (ROOT / "native-wheels" / "scripts" / "build-nvdiffrast.ps1").read_text(encoding="utf-8")
     require("Set-StrictMode -Version Latest" in build_nvdiffrast, "build-nvdiffrast.ps1 must enable strict mode")
@@ -203,6 +216,36 @@ def validate_native_wheels_tooling() -> None:
     require("Invoke-Expression" not in smoke_test, "smoke-test.ps1 must not construct commands via Invoke-Expression")
     require("import torch; import nvdiffrast.torch; import diff_gaussian_rasterization" in smoke_test, "smoke-test.ps1 must validate torch and native imports")
 
+    build_nvdiffrast_linux = (ROOT / "native-wheels" / "scripts" / "build-nvdiffrast-linux.sh").read_text(encoding="utf-8")
+    require("set -euo pipefail" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must enable strict shell mode")
+    require("eval" not in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must not construct commands via eval")
+    require("python -m pip wheel" in build_nvdiffrast_linux or '"$VENV_PYTHON" -m pip wheel' in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must build wheels via pip wheel --no-build-isolation")
+    require("--no-build-isolation" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must disable build isolation")
+    require("https://github.com/NVlabs/nvdiffrast.git" in build_nvdiffrast_linux and "v0.4.0" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must pin nvdiffrast source")
+    require("CUDA_HOME" in build_nvdiffrast_linux and "CUDA_PATH" in build_nvdiffrast_linux and "CUDACXX" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must export CUDA env vars")
+    require("TORCH_CUDA_ARCH_LIST=\"6.1;7.5;8.0;8.6;8.9;9.0+PTX\"" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must default to the Windows v2 CUDA arch list")
+    require("LD_LIBRARY_PATH" in build_nvdiffrast_linux and "LIBRARY_PATH" in build_nvdiffrast_linux and "CPATH" in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must export Linux CUDA include/lib paths")
+    require('$CUDA_ROOT/lib' in build_nvdiffrast_linux and '$CUDA_ROOT/lib64' in build_nvdiffrast_linux and 'targets/x86_64-linux/lib' in build_nvdiffrast_linux, "build-nvdiffrast-linux.sh must include common Conda and Toolkit CUDA lib directories")
+
+    build_diff_linux = (ROOT / "native-wheels" / "scripts" / "build-diff-gaussian-linux.sh").read_text(encoding="utf-8")
+    require("set -euo pipefail" in build_diff_linux, "build-diff-gaussian-linux.sh must enable strict shell mode")
+    require("eval" not in build_diff_linux, "build-diff-gaussian-linux.sh must not construct commands via eval")
+    require("python -m pip wheel" in build_diff_linux or '"$VENV_PYTHON" -m pip wheel' in build_diff_linux, "build-diff-gaussian-linux.sh must build wheels via pip wheel --no-build-isolation")
+    require("--no-build-isolation" in build_diff_linux, "build-diff-gaussian-linux.sh must disable build isolation")
+    require("https://github.com/autonomousvision/mip-splatting.git" in build_diff_linux and "dda02ab5ecf45d6edb8c540d9bb65c7e451345a9" in build_diff_linux, "build-diff-gaussian-linux.sh must pin mip-splatting source")
+    require("submodules/diff-gaussian-rasterization" in build_diff_linux, "build-diff-gaussian-linux.sh must build the diff-gaussian subdirectory")
+    require("submodule update --init --recursive" in build_diff_linux, "build-diff-gaussian-linux.sh must initialize recursive submodules")
+    require("CUDA_HOME" in build_diff_linux and "CUDA_PATH" in build_diff_linux and "CUDACXX" in build_diff_linux, "build-diff-gaussian-linux.sh must export CUDA env vars")
+    require("TORCH_CUDA_ARCH_LIST=\"6.1;7.5;8.0;8.6;8.9;9.0+PTX\"" in build_diff_linux, "build-diff-gaussian-linux.sh must default to the Windows v2 CUDA arch list")
+    require("LD_LIBRARY_PATH" in build_diff_linux and "LIBRARY_PATH" in build_diff_linux and "CPATH" in build_diff_linux, "build-diff-gaussian-linux.sh must export Linux CUDA include/lib paths")
+    require('$CUDA_ROOT/lib' in build_diff_linux and '$CUDA_ROOT/lib64' in build_diff_linux and 'targets/x86_64-linux/lib' in build_diff_linux, "build-diff-gaussian-linux.sh must include common Conda and Toolkit CUDA lib directories")
+
+    smoke_test_linux = (ROOT / "native-wheels" / "scripts" / "smoke-test-linux.sh").read_text(encoding="utf-8")
+    require("set -euo pipefail" in smoke_test_linux, "smoke-test-linux.sh must enable strict shell mode")
+    require("eval" not in smoke_test_linux, "smoke-test-linux.sh must not construct commands via eval")
+    require("--no-deps" in smoke_test_linux, "smoke-test-linux.sh must install local native wheels without dependencies")
+    require("import torch; import torchvision; import nvdiffrast.torch; import diff_gaussian_rasterization" in smoke_test_linux, "smoke-test-linux.sh must validate torch, torchvision, and native imports")
+
     nvdiffrast_license = (ROOT / "native-wheels" / "licenses" / "nvdiffrast-LICENSE.txt").read_text(encoding="utf-8")
     require("Nvidia Source Code License" in nvdiffrast_license, "nvdiffrast license text must be complete")
     diff_license = (ROOT / "native-wheels" / "licenses" / "diff-gaussian-rasterization-LICENSE.md").read_text(encoding="utf-8")
@@ -219,6 +262,20 @@ def validate_native_wheels_tooling() -> None:
     require("build-nvdiffrast.ps1" in workflow and "build-diff-gaussian.ps1" in workflow, "native wheel workflow must run both build scripts")
     require("smoke-test.ps1" in workflow, "native wheel workflow must smoke-test built wheels")
     require("gh release upload" in workflow, "native wheel workflow must support release upload")
+
+    linux_workflow = (ROOT / ".github" / "workflows" / "build-native-linux-wheels.yml").read_text(encoding="utf-8")
+    require("ubuntu-22.04" in linux_workflow, "Linux native wheel workflow must build on ubuntu-22.04")
+    require("native-wheels-linux-x86_64-torch270-cu128-v1" in linux_workflow, "Linux native wheel workflow must default to the Linux release tag")
+    require("conda-incubator/setup-miniconda@v4" in linux_workflow and "cuda-12.8.1" in linux_workflow, "Linux native wheel workflow must install CUDA Toolkit 12.8 packages from NVIDIA Conda")
+    require("conda create -y -p \"$cudaEnv\"" in linux_workflow, "Linux native wheel workflow must install CUDA packages into an explicit prefix")
+    require("cuda-nvcc" in linux_workflow and "cuda-cudart-dev" in linux_workflow and "cuda-cccl" in linux_workflow, "Linux native wheel workflow must install required CUDA compiler/runtime packages")
+    require("libcusparse-dev" in linux_workflow and "libcublas-dev" in linux_workflow and "libcusolver-dev" in linux_workflow and "libcurand-dev" in linux_workflow and "libcufft-dev" in linux_workflow, "Linux native wheel workflow must install CUDA dev libraries required by PyTorch")
+    require("CUDA_HOME=$cudaRoot" in linux_workflow and "CUDA_PATH=$cudaRoot" in linux_workflow and "CUDACXX=$nvccPath" in linux_workflow, "Linux native wheel workflow must export CUDA_HOME/CUDA_PATH/CUDACXX")
+    require("CPATH=$cudaRoot/include" in linux_workflow and "LIBRARY_PATH=$cudaRoot/lib:$cudaRoot/lib64:$cudaRoot/targets/x86_64-linux/lib" in linux_workflow and "LD_LIBRARY_PATH=$cudaRoot/lib:$cudaRoot/lib64:$cudaRoot/targets/x86_64-linux/lib" in linux_workflow, "Linux native wheel workflow must export Linux include/lib env vars")
+    require("build-nvdiffrast-linux.sh" in linux_workflow and "build-diff-gaussian-linux.sh" in linux_workflow, "Linux native wheel workflow must run both Linux build scripts")
+    require("smoke-test-linux.sh" in linux_workflow, "Linux native wheel workflow must smoke-test built wheels")
+    require("native-linux-x86_64-wheels-${{ matrix.python-abi }}" in linux_workflow, "Linux native wheel workflow must upload ABI-specific artifact names")
+    require("gh release upload" in linux_workflow, "Linux native wheel workflow must support release upload")
 
 
 def main() -> None:

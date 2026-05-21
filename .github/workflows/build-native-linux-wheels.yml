@@ -1,0 +1,160 @@
+name: Build native Linux wheels
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag for uploaded native wheels
+        required: true
+        default: native-wheels-linux-x86_64-torch270-cu128-v1
+      upload_release:
+        description: Upload wheels and license files to the release after a successful build
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.python-abi }} Linux wheels
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - python-version: '3.11'
+            python-abi: cp311
+          - python-version: '3.12'
+            python-abi: cp312
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Conda for CUDA packages
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniconda-version: latest
+          auto-update-conda: false
+          auto-activate-base: false
+
+      - name: Install CUDA Toolkit 12.8 packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cudaEnv="$RUNNER_TEMP/cuda-build"
+          conda create -y -p "$cudaEnv" -c nvidia/label/cuda-12.8.1 -c nvidia -c conda-forge cuda-nvcc cuda-cudart-dev cuda-cccl libcublas-dev libcusparse-dev libcusolver-dev libcurand-dev libcufft-dev
+          cudaRoot="$cudaEnv"
+          nvccPath="$cudaRoot/bin/nvcc"
+          if [[ ! -x "$nvccPath" ]]; then
+            echo "nvcc not found at $nvccPath" >&2
+            exit 1
+          fi
+          {
+            echo "CUDA_HOME=$cudaRoot"
+            echo "CUDA_PATH=$cudaRoot"
+            echo "CUDACXX=$nvccPath"
+            echo "CPATH=$cudaRoot/include"
+            echo "LIBRARY_PATH=$cudaRoot/lib:$cudaRoot/lib64:$cudaRoot/targets/x86_64-linux/lib"
+            echo "LD_LIBRARY_PATH=$cudaRoot/lib:$cudaRoot/lib64:$cudaRoot/targets/x86_64-linux/lib"
+          } >> "$GITHUB_ENV"
+          echo "$cudaRoot/bin" >> "$GITHUB_PATH"
+          echo "CUDA root: $cudaRoot"
+          "$nvccPath" --version
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          python --version
+          which nvcc
+          nvcc --version
+          echo "CUDA_PATH=$CUDA_PATH"
+
+      - name: Build nvdiffrast wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelDir="$PWD/native-wheels/wheelhouse/${{ matrix.python-abi }}"
+          bash native-wheels/scripts/build-nvdiffrast-linux.sh \
+            --python python \
+            --out-dir "$wheelDir" \
+            --work-dir "$PWD/native-wheels/work/nvdiffrast-${{ matrix.python-abi }}" \
+            --cuda-root "$CUDA_PATH" \
+            --clean
+
+      - name: Build diff_gaussian_rasterization wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelDir="$PWD/native-wheels/wheelhouse/${{ matrix.python-abi }}"
+          bash native-wheels/scripts/build-diff-gaussian-linux.sh \
+            --python python \
+            --out-dir "$wheelDir" \
+            --work-dir "$PWD/native-wheels/work/diff-gaussian-${{ matrix.python-abi }}" \
+            --cuda-root "$CUDA_PATH" \
+            --clean
+
+      - name: Smoke-test built wheels
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheelDir="$PWD/native-wheels/wheelhouse/${{ matrix.python-abi }}"
+          bash native-wheels/scripts/smoke-test-linux.sh --python python --wheel-dir "$wheelDir"
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-x86_64-wheels-${{ matrix.python-abi }}
+          path: native-wheels/wheelhouse/${{ matrix.python-abi }}/*.whl
+          if-no-files-found: error
+
+  publish:
+    name: Publish release assets
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ inputs.upload_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: native-linux-x86_64-wheels-*
+          merge-multiple: true
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists"
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "Native Linux x86_64 wheels for TRELLIS text (${RELEASE_TAG})" \
+              --notes "Prebuilt Linux x86_64 wheels for nvdiffrast and diff_gaussian_rasterization targeting cp311/cp312, torch 2.7.0, torchvision 0.22.0, and CUDA 12.8. Built on hosted Ubuntu 22.04 with linux_x86_64 wheel tags. Upstream native components retain their original non-commercial / research-oriented licenses. GitHub-hosted CI validates imports only; real Linux NVIDIA GPU runtime validation is still required."
+          fi
+
+      - name: Upload wheels and licenses to Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          gh release upload "$RELEASE_TAG" dist/*.whl native-wheels/licenses/nvdiffrast-LICENSE.txt native-wheels/licenses/diff-gaussian-rasterization-LICENSE.md --clobber
