@@ -1,0 +1,31 @@
+name: Test setup
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  setup-tests:
+    name: Setup tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run setup regression tests
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run extension validation
+        run: python validate_text_only_setup.py

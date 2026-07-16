@@ -88,6 +88,18 @@ XFORMERS_BY_TORCH_VERSION = {
     "2.6.0": "xformers==0.0.29.post3",
     "2.5.1": "xformers==0.0.28.post3",
 }
+PYTHON_SUBPROCESS_REDIRECTORS = (
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PYTHONSTARTUP",
+    "PYTHONUSERBASE",
+    "PIP_USER",
+    "PIP_TARGET",
+    "PIP_PREFIX",
+    "PIP_REQUIRE_VIRTUALENV",
+    "VIRTUAL_ENV",
+    "CONDA_PREFIX",
+)
 
 
 @dataclass(frozen=True)
@@ -456,6 +468,7 @@ def patch_installed_cumm_cuda_discovery(venv: Path) -> None:
         subprocess.check_output(
             [str(venv_bin(venv, "python")), "-c", "import cumm.common; print(cumm.common.__file__)"],
             text=True,
+            env=clean_python_subprocess_env(),
         ).strip()
     )
     original = cumm_common.read_text(encoding="utf-8")
@@ -476,12 +489,130 @@ def run(cmd: list[str], *, env: dict[str, str] | None = None, cwd: Path | None =
     subprocess.run(cmd, check=True, env=env, cwd=str(cwd) if cwd else None)
 
 
+def clean_python_subprocess_env(env: dict[str, str] | None = None) -> dict[str, str]:
+    """Remove host Python/pip redirects without dropping build or network settings."""
+
+    cleaned = dict(os.environ if env is None else env)
+    for name in PYTHON_SUBPROCESS_REDIRECTORS:
+        cleaned.pop(name, None)
+    return cleaned
+
+
+def _normalized_executable_path(value: str | os.PathLike[str]) -> str:
+    return os.path.normcase(os.path.realpath(os.path.abspath(os.fspath(value))))
+
+
+def _normalized_invocation_path(value: str | os.PathLike[str]) -> str:
+    return os.path.normcase(os.path.abspath(os.fspath(value)))
+
+
+def resolve_venv_seed_python(python_exe: str) -> str:
+    """Prefer the base interpreter when Modly runs setup from its managed venv."""
+
+    base_executable = getattr(sys, "_base_executable", None)
+    if not base_executable:
+        return python_exe
+    if _normalized_executable_path(python_exe) != _normalized_executable_path(sys.executable):
+        return python_exe
+    if _normalized_invocation_path(base_executable) == _normalized_invocation_path(python_exe):
+        return python_exe
+    if not Path(base_executable).is_file():
+        return python_exe
+    return os.fspath(base_executable)
+
+
+def _path_is_within(value: str | os.PathLike[str], directory: str | os.PathLike[str]) -> bool:
+    normalized_value = _normalized_executable_path(value)
+    normalized_directory = _normalized_executable_path(directory)
+    try:
+        return os.path.commonpath((normalized_value, normalized_directory)) == normalized_directory
+    except ValueError:
+        return False
+
+
+def validate_venv_seed_python(
+    seed_python: str,
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
+    """Prove that a seed is the compatible base Python before venv --clear."""
+
+    probe = (
+        "import ensurepip,json,sys,venv;"
+        "print(json.dumps({"
+        "'version':[sys.version_info.major,sys.version_info.minor],"
+        "'executable':sys.executable,"
+        "'prefix':sys.prefix,"
+        "'base_prefix':sys.base_prefix"
+        "}))"
+    )
+    try:
+        completed = subprocess.run(
+            [seed_python, "-E", "-c", probe],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=clean_python_subprocess_env(env),
+        )
+        details = json.loads(completed.stdout)
+        version = tuple(details["version"])
+        executable = os.fspath(details["executable"])
+        prefix = os.fspath(details["prefix"])
+        base_prefix = os.fspath(details["base_prefix"])
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise RuntimeError(
+            f"Python seed compatibility probe failed for {seed_python}. "
+            "Repair or reinstall Modly's managed Python runtime, then rerun setup. "
+            "The existing extension venv was left untouched."
+        ) from exc
+
+    expected_version = (sys.version_info.major, sys.version_info.minor)
+    problems = []
+    if version != expected_version:
+        problems.append(f"reported Python {version}, expected {expected_version}")
+    if _normalized_executable_path(executable) != _normalized_executable_path(seed_python):
+        problems.append(f"reported executable {executable}")
+    if _normalized_executable_path(prefix) != _normalized_executable_path(base_prefix):
+        problems.append(f"reported non-base prefixes {prefix} and {base_prefix}")
+    if not Path(base_prefix).is_dir():
+        problems.append(f"reported missing base prefix {base_prefix}")
+    elif not _path_is_within(executable, base_prefix):
+        problems.append(f"reported executable outside base prefix {base_prefix}")
+
+    if problems:
+        raise RuntimeError(
+            f"Python seed {seed_python} is not a compatible Python {expected_version[0]}.{expected_version[1]} "
+            f"base interpreter: {'; '.join(problems)}. "
+            "Repair or reinstall Modly's managed Python runtime, then rerun setup. "
+            "The existing extension venv was left untouched."
+        )
+
+
+def create_extension_venv(
+    python_exe: str,
+    venv: Path,
+    *,
+    env: dict[str, str] | None = None,
+) -> None:
+    seed_python = resolve_venv_seed_python(python_exe)
+    validate_venv_seed_python(seed_python, env=env)
+    if seed_python != python_exe:
+        print(f"[setup] Creating extension venv from base Python: {seed_python}")
+    run(
+        [seed_python, "-E", "-m", "venv", "--clear", str(venv)],
+        env=clean_python_subprocess_env(env),
+    )
+
+
 def pip(venv: Path, *args: str, env: dict[str, str] | None = None) -> None:
     # Always invoke pip through the venv Python executable. On Windows, running
     # `venv\\Scripts\\pip.exe install --upgrade pip ...` can fail because pip is
     # trying to replace the wrapper currently executing. `python -m pip` is the
     # supported cross-platform form and also works on Linux.
-    run([str(venv_bin(venv, "python")), "-m", "pip", *args], env=env)
+    run(
+        [str(venv_bin(venv, "python")), "-m", "pip", *args],
+        env=clean_python_subprocess_env(env),
+    )
 
 
 def vendor_sources_ready(ext_dir: Path) -> bool:
@@ -502,7 +633,7 @@ def ensure_vendor_sources(ext_dir: Path, venv: Path) -> None:
 
     print("[setup] Populating vendor/ with official TRELLIS text runtime sources ...")
     try:
-        run([str(venv_bin(venv, "python")), str(build_vendor)], cwd=ext_dir)
+        python(venv, str(build_vendor), cwd=ext_dir)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             "Failed to populate vendor/ with official TRELLIS text runtime sources. "
@@ -533,8 +664,17 @@ def pip_install(
     pip(venv, *cmd, env=env)
 
 
-def python(venv: Path, *args: str, env: dict[str, str] | None = None) -> None:
-    run([str(venv_bin(venv, "python")), *args], env=env)
+def python(
+    venv: Path,
+    *args: str,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> None:
+    run(
+        [str(venv_bin(venv, "python")), *args],
+        env=clean_python_subprocess_env(env),
+        cwd=cwd,
+    )
 
 
 def native_install_error(package_name: str, attempted_ref: str, exc: Exception) -> RuntimeError:
@@ -801,7 +941,7 @@ def setup(python_exe: str, ext_dir: Path, gpu_sm: int, cuda_version: int = 0) ->
     plan = plan_platform_install()
 
     print(f"[setup] Platform install plan: {plan.name} ({platform_label()})")
-    run([python_exe, "-m", "venv", str(venv)])
+    create_extension_venv(python_exe, venv)
     pip(venv, "install", "--upgrade", "pip", "setuptools", "wheel")
     ensure_vendor_sources(ext_dir, venv)
 
