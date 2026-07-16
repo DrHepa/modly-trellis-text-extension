@@ -86,16 +86,19 @@ class PythonSubprocessEnvironmentTests(unittest.TestCase):
     def test_pip_and_python_helpers_sanitize_explicit_build_env(self) -> None:
         calls: list[tuple[list[str], dict[str, object]]] = []
 
-        def capture_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        def capture_run(cmd: list[str], **kwargs: object) -> None:
             calls.append((list(cmd), dict(kwargs)))
-            return subprocess.CompletedProcess(cmd, 0)
 
         source = contaminated_env()
-        with mock.patch.object(setup_module.subprocess, "run", side_effect=capture_run):
-            setup_module.pip(Path("extension-venv"), "install", "example", env=source)
-            setup_module.python(Path("extension-venv"), "-c", "print('ok')", env=source)
+        venv = Path("extension-venv")
+        with mock.patch.object(setup_module, "run", side_effect=capture_run):
+            setup_module.pip(venv, "install", "example", env=source)
+            setup_module.python(venv, "-c", "print('ok')", env=source)
 
         self.assertEqual(len(calls), 2)
+        venv_python = str(setup_module.venv_bin(venv, "python"))
+        self.assertEqual(calls[0][0], [venv_python, "-m", "pip", "install", "example"])
+        self.assertEqual(calls[1][0], [venv_python, "-c", "print('ok')"])
         for _command, kwargs in calls:
             child_env = kwargs["env"]
             self.assertIsInstance(child_env, dict)
